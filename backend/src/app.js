@@ -40,14 +40,7 @@ const apiLimiter = rateLimit({
   message: { success: false, message: "Too many requests from this IP, please try again later." },
 });
 
-// Stricter limit for auth endpoints: 5 requests per 15 minutes per IP
-const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 5,
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { success: false, message: "Too many login attempts, please try again later." },
-});
+// Login/register limits are applied on specific routes in `auth.routes.js` (avoid double-limiting).
 
 // ─── Core Middleware ──────────────────────────────────────────────────────────
 
@@ -79,7 +72,6 @@ app.use(
 // ─── Apply Rate Limiting ──────────────────────────────────────────────────────
 
 app.use("/api/", apiLimiter);
-app.use("/api/auth/login", authLimiter);
 
 // ─── API Routes ───────────────────────────────────────────────────────────────
 

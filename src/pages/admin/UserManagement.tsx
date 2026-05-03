@@ -18,6 +18,15 @@ import { Search, Eye, Ban, Trash2, UserPlus } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { request } from "@/lib/http";
 import { useAuth } from "@/hooks/useAuth";
+import { Separator } from "@/components/ui/separator";
+import {
+  AdminAccountSummary,
+  AdminActivityLog,
+  AdminProfileFields,
+  AdminProfileSection,
+  AdminProfileSections,
+  type ActivityEntry,
+} from "@/components/admin/AdminProfileDisplay";
 
 type AdminUser = {
   _id: string;
@@ -26,6 +35,10 @@ type AdminUser = {
   role: string;
   isActive?: boolean;
   createdAt?: string;
+  emailVerified?: boolean;
+  registrationApproved?: boolean;
+  registrationRejectedAt?: string | null;
+  lastLogin?: string | null;
 };
 
 type ListUsersRes = { users: AdminUser[]; pagination: { total: number } };
@@ -33,7 +46,7 @@ type ListUsersRes = { users: AdminUser[]; pagination: { total: number } };
 type UserDetailRes = {
   user: AdminUser;
   profile: Record<string, unknown> | null;
-  recentActivity: { action?: string; description?: string; timestamp?: string }[];
+  recentActivity: ActivityEntry[];
 };
 
 function passwordClientError(pw: string): string | null {
@@ -203,11 +216,6 @@ export default function UserManagement() {
     onError: (e: Error) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
 
-  const detailText = (row: AdminUser) => {
-    if (row.role === "admin") return "Administrator";
-    return row.role === "doctor" ? "Doctor profile" : "Patient profile";
-  };
-
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -335,13 +343,13 @@ export default function UserManagement() {
       </Card>
 
       <Dialog open={Boolean(viewId)} onOpenChange={(o) => !o && setViewId(null)}>
-        <DialogContent className="max-h-[85vh] overflow-y-auto">
+        <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto sm:max-w-xl">
           <DialogHeader>
             <DialogTitle>User details</DialogTitle>
           </DialogHeader>
           {detail?.user && (
-            <div className="space-y-4 text-sm">
-              <div className="flex items-center gap-3">
+            <div className="space-y-1 text-sm pt-1">
+              <div className="flex items-center gap-3 pb-2">
                 <Avatar className="h-12 w-12">
                   <AvatarFallback className="bg-primary text-primary-foreground">
                     {detail.user.name
@@ -353,34 +361,36 @@ export default function UserManagement() {
                 </Avatar>
                 <div>
                   <p className="font-semibold text-foreground text-base">{detail.user.name}</p>
-                  <p className="text-muted-foreground">{detail.user.email}</p>
-                  <p className="text-xs text-muted-foreground mt-1">{detailText(detail.user)}</p>
+                  <p className="text-muted-foreground text-sm">{detail.user.email}</p>
+                  <Badge variant="outline" className="mt-2 capitalize">
+                    {detail.user.role}
+                  </Badge>
                 </div>
               </div>
-              {detail.profile && Object.keys(detail.profile).length > 0 && (
-                <div className="rounded-lg bg-muted/50 p-3">
-                  <p className="text-xs text-muted-foreground mb-2">Profile (from database)</p>
-                  <pre className="text-xs whitespace-pre-wrap break-words max-h-40 overflow-auto">
-                    {JSON.stringify(detail.profile, null, 2)}
-                  </pre>
-                </div>
-              )}
-              {detail.recentActivity?.length ? (
-                <div>
-                  <p className="text-xs text-muted-foreground mb-2">Recent activity</p>
-                  <ul className="space-y-2 max-h-48 overflow-y-auto">
-                    {detail.recentActivity.map((a, i) => (
-                      <li key={`${a.timestamp}-${i}`} className="text-xs border-b border-border/50 pb-2 last:border-0">
-                        <span className="font-medium">{a.action}</span>
-                        {a.description ? ` — ${a.description}` : ""}
-                        {a.timestamp ? (
-                          <span className="block text-muted-foreground">{String(a.timestamp)}</span>
-                        ) : null}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              ) : null}
+
+              <Separator />
+
+              <AdminProfileSections>
+                <AdminProfileSection title="Account">
+                  <AdminAccountSummary user={detail.user} />
+                </AdminProfileSection>
+
+                {detail.user.role !== "admin" ? (
+                  <AdminProfileSection title={detail.user.role === "doctor" ? "Doctor profile" : "Patient profile"}>
+                    <AdminProfileFields role={detail.user.role} profile={detail.profile} />
+                  </AdminProfileSection>
+                ) : (
+                  <AdminProfileSection title="Clinical profile">
+                    <p className="text-sm text-muted-foreground">Administrators do not have a patient or doctor profile.</p>
+                  </AdminProfileSection>
+                )}
+
+                <AdminProfileSection title="Recent activity">
+                  <div className="max-h-56 overflow-y-auto pr-1">
+                    <AdminActivityLog entries={detail.recentActivity ?? []} />
+                  </div>
+                </AdminProfileSection>
+              </AdminProfileSections>
             </div>
           )}
         </DialogContent>

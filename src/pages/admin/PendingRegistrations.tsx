@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { format, parseISO } from "date-fns";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -19,6 +18,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { request } from "@/lib/http";
 import { Check, X, Mail, Calendar, User } from "lucide-react";
+import { AdminProfileFields, formatDisplayDate } from "@/components/admin/AdminProfileDisplay";
 
 type LeanUser = {
   _id: string;
@@ -26,26 +26,6 @@ type LeanUser = {
   email: string;
   role: string;
   createdAt?: string;
-};
-
-type Address = { street?: string; city?: string; state?: string; zipCode?: string; country?: string };
-type Emergency = { name?: string; phone?: string; relationship?: string };
-
-type PatientProfile = {
-  dateOfBirth?: string;
-  gender?: string;
-  bloodType?: string;
-  phone?: string;
-  address?: Address;
-  emergencyContact?: Emergency;
-};
-
-type DoctorProfile = {
-  specialty?: string;
-  experience?: number;
-  fees?: number;
-  bio?: string;
-  qualifications?: string[];
 };
 
 type PendingRow = { user: LeanUser; profile: Record<string, unknown> | null };
@@ -56,73 +36,6 @@ type DialogState =
   | null
   | { kind: "approve"; row: PendingRow }
   | { kind: "reject"; row: PendingRow };
-
-function formatDate(iso?: string) {
-  if (!iso) return "—";
-  try {
-    return format(parseISO(iso.includes("T") ? iso : `${iso}T00:00:00`), "PP");
-  } catch {
-    return iso;
-  }
-}
-
-function Detail({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-lg border border-border/60 bg-muted/20 px-3 py-2">
-      <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
-      <p className="text-sm text-foreground mt-0.5 break-words">{value || "—"}</p>
-    </div>
-  );
-}
-
-function ProfileDetails({ role, profile }: { role: string; profile: Record<string, unknown> | null }) {
-  if (!profile || Object.keys(profile).length === 0) {
-    return <p className="text-sm text-muted-foreground">No profile details on file.</p>;
-  }
-
-  if (role === "doctor") {
-    const p = profile as unknown as DoctorProfile;
-    const quals = Array.isArray(p.qualifications) ? p.qualifications.filter(Boolean).join(", ") : "—";
-    return (
-      <div className="grid gap-2 sm:grid-cols-2">
-        <Detail label="Specialty" value={p.specialty ?? "—"} />
-        <Detail label="Experience (years)" value={p.experience != null ? String(p.experience) : "—"} />
-        <Detail label="Consultation fee" value={p.fees != null ? `$${p.fees}` : "—"} />
-        <Detail label="Qualifications" value={quals} />
-        {p.bio ? (
-          <div className="sm:col-span-2 rounded-lg border border-border/60 bg-muted/20 px-3 py-2">
-            <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Bio</p>
-            <p className="text-sm text-foreground mt-0.5 whitespace-pre-wrap">{p.bio}</p>
-          </div>
-        ) : null}
-      </div>
-    );
-  }
-
-  const p = profile as unknown as PatientProfile;
-  const addr = p.address || {};
-  const addrLine = [addr.street, addr.city, addr.state, addr.zipCode, addr.country].filter(Boolean).join(", ");
-  const ec = p.emergencyContact || {};
-
-  return (
-    <div className="grid gap-2 sm:grid-cols-2">
-      <Detail label="Date of birth" value={formatDate(p.dateOfBirth)} />
-      <Detail label="Gender" value={p.gender ?? "—"} />
-      <Detail label="Blood type" value={p.bloodType ?? "—"} />
-      <Detail label="Phone" value={p.phone ?? "—"} />
-      <div className="sm:col-span-2 rounded-lg border border-border/60 bg-muted/20 px-3 py-2">
-        <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Address</p>
-        <p className="text-sm text-foreground mt-0.5">{addrLine || "—"}</p>
-      </div>
-      <div className="sm:col-span-2 rounded-lg border border-border/60 bg-muted/20 px-3 py-2">
-        <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Emergency contact</p>
-        <p className="text-sm text-foreground mt-0.5">
-          {[ec.name, ec.phone, ec.relationship].filter(Boolean).join(" · ") || "—"}
-        </p>
-      </div>
-    </div>
-  );
-}
 
 export default function PendingRegistrations() {
   const { toast } = useToast();
@@ -196,7 +109,7 @@ export default function PendingRegistrations() {
                       {user.createdAt ? (
                         <span className="inline-flex items-center gap-1 text-xs">
                           <Calendar className="h-3.5 w-3.5" />
-                          Requested {formatDate(user.createdAt)}
+                          Requested {formatDisplayDate(user.createdAt)}
                         </span>
                       ) : null}
                     </div>
@@ -232,7 +145,7 @@ export default function PendingRegistrations() {
               <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-3">
                 Registration details
               </p>
-              <ProfileDetails role={user.role} profile={profile} />
+              <AdminProfileFields role={user.role} profile={profile} />
             </CardContent>
           </Card>
         ))}
