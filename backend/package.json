@@ -9,6 +9,7 @@
     "dev": "nodemon server.js",
     "lint": "eslint .",
     "seed": "node src/seeds/initialData.js",
+    "seed:full": "node src/seeds/seed.js",
     "test": "echo \"Tests coming soon\""
   },
   "dependencies": {

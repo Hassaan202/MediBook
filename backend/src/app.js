@@ -3,6 +3,7 @@ const express = require("express");
 const cors = require("cors");
 const helmet = require("helmet");
 const compression = require("compression");
+const rateLimit = require("express-rate-limit");
 const { CORS_ORIGIN } = require("./config/env");
 const { requestLogger } = require("./middleware/logger");
 const { sanitizeInput } = require("./middleware/validation");
@@ -16,6 +17,9 @@ const medicalRecordsRoutes = require("./routes/medicalRecords.routes");
 const prescriptionsRoutes = require("./routes/prescriptions.routes");
 const reviewsRoutes = require("./routes/reviews.routes");
 const auditLogsRoutes = require("./routes/auditLogs.routes");
+const adminRoutes = require("./routes/admin.routes");
+const analyticsRoutes = require("./routes/analytics.routes");
+const systemConfigRoutes = require("./routes/systemConfig.routes");
 const {
   notFoundHandler,
   validationErrorHandler,
@@ -26,11 +30,38 @@ const app = express();
 
 app.set("trust proxy", 1);
 
+// ─── Rate Limiting ─────────────────────────────────────────────────────────────
+
+// General API rate limit: 100 requests per 15 minutes per IP
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 100,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, message: "Too many requests from this IP, please try again later." },
+});
+
+// Stricter limit for auth endpoints: 5 requests per 15 minutes per IP
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, message: "Too many login attempts, please try again later." },
+});
+
+// ─── Core Middleware ──────────────────────────────────────────────────────────
+
 app.use(helmet());
+
+// Support comma-separated origins in CORS_ORIGIN env var
+const allowedOrigins = CORS_ORIGIN.split(",").map((o) => o.trim());
 app.use(
   cors({
-    origin: CORS_ORIGIN,
+    origin: allowedOrigins.length === 1 ? allowedOrigins[0] : allowedOrigins,
     credentials: true,
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
+    allowedHeaders: ["Content-Type", "Authorization"],
   })
 );
 app.use(compression());
@@ -39,10 +70,20 @@ app.use(express.urlencoded({ extended: true, limit: "1mb" }));
 app.use(requestLogger);
 app.use(sanitizeInput);
 
+// ─── Static Uploads ───────────────────────────────────────────────────────────
+
 app.use(
   "/uploads",
   express.static(path.join(__dirname, "../uploads"))
 );
+
+// ─── Apply Rate Limiting ──────────────────────────────────────────────────────
+
+app.use("/api/", apiLimiter);
+app.use("/api/auth/login", authLimiter);
+app.use("/api/auth/register", authLimiter);
+
+// ─── API Routes ───────────────────────────────────────────────────────────────
 
 app.use("/api/auth", authRoutes);
 app.use("/api/users", usersRoutes);
@@ -54,6 +95,11 @@ app.use("/api/medical-records", medicalRecordsRoutes);
 app.use("/api/prescriptions", prescriptionsRoutes);
 app.use("/api/reviews", reviewsRoutes);
 app.use("/api/audit-logs", auditLogsRoutes);
+app.use("/api/admin", adminRoutes);
+app.use("/api/analytics", analyticsRoutes);
+app.use("/api/system-config", systemConfigRoutes);
+
+// ─── Error Handlers ───────────────────────────────────────────────────────────
 
 app.use(notFoundHandler);
 app.use(validationErrorHandler);
