@@ -1,6 +1,7 @@
 import React from "react";
 import { Navigate, useLocation } from "react-router-dom";
-import { useAuth, UserRole } from "@/contexts/AuthContext";
+import { useAuth } from "@/hooks/useAuth";
+import type { UserRole } from "@/types/auth";
 import {
   Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel,
   SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarProvider, SidebarTrigger, useSidebar,
@@ -10,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   LayoutDashboard, Calendar, FileText, Search, Stethoscope, ClipboardList, Pill,
-  Users, BarChart3, Shield, LogOut, Menu, Heart
+  Users, Shield, LogOut, Menu, Heart,
 } from "lucide-react";
 
 const roleNavItems: Record<UserRole, { title: string; url: string; icon: React.ElementType }[]> = {
@@ -83,7 +84,14 @@ function AppSidebarContent() {
             </div>
           )}
           {!collapsed && (
-            <Button variant="ghost" size="icon" onClick={logout} className="text-sidebar-foreground/60 hover:text-sidebar-foreground shrink-0 h-8 w-8">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => {
+                void logout();
+              }}
+              className="text-sidebar-foreground/60 hover:text-sidebar-foreground shrink-0 h-8 w-8"
+            >
               <LogOut className="h-4 w-4" />
             </Button>
           )}
@@ -94,9 +102,16 @@ function AppSidebarContent() {
 }
 
 export function DashboardLayout({ children, allowedRoles }: { children: React.ReactNode; allowedRoles: UserRole[] }) {
-  const { user, isAuthenticated } = useAuth();
+  const { user, isAuthenticated, bootstrapping } = useAuth();
   const location = useLocation();
 
+  if (bootstrapping) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background text-muted-foreground">
+        Loading…
+      </div>
+    );
+  }
   if (!isAuthenticated || !user) return <Navigate to="/login" state={{ from: location }} replace />;
   if (!allowedRoles.includes(user.role)) return <Navigate to={`/${user.role}`} replace />;
 

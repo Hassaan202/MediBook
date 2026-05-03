@@ -1,12 +1,14 @@
 import React, { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import { useAuth, UserRole } from "@/contexts/AuthContext";
+import { useAuth } from "@/hooks/useAuth";
+import type { UserRole } from "@/types/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Heart, AlertCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { ApiError } from "@/lib/http";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -17,27 +19,39 @@ export default function LoginPage() {
   const navigate = useNavigate();
   const { toast } = useToast();
 
-  const roleRedirects: Record<UserRole, string> = { patient: "/patient", doctor: "/doctor", admin: "/admin" };
+  const roleRedirects: Record<UserRole, string> = {
+    patient: "/patient",
+    doctor: "/doctor",
+    admin: "/admin",
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
-    if (!email || !password) { setError("Please fill in all fields"); return; }
+    if (!email || !password) {
+      setError("Please fill in all fields");
+      return;
+    }
     setLoading(true);
     try {
-      await login(email, password);
-      const stored = JSON.parse(localStorage.getItem("hms_user") || "{}");
-      toast({ title: "Welcome back!", description: `Logged in as ${stored.name}` });
-      navigate(roleRedirects[stored.role as UserRole] || "/");
-    } catch (err: any) {
-      setError(err.message);
+      const session = await login(email, password);
+      toast({ title: "Welcome back!", description: `Signed in as ${session.name}` });
+      navigate(roleRedirects[session.role] || "/patient");
+    } catch (err: unknown) {
+      const msg =
+        err instanceof ApiError
+          ? err.message
+          : err instanceof Error
+            ? err.message
+            : "Sign in failed";
+      setError(msg);
     } finally {
       setLoading(false);
     }
   };
 
-  const quickLogin = (email: string) => {
-    setEmail(email);
+  const quickLogin = (em: string) => {
+    setEmail(em);
     setPassword("password");
   };
 
@@ -47,15 +61,15 @@ export default function LoginPage() {
         <div className="text-center space-y-2">
           <div className="flex items-center justify-center gap-2">
             <Heart className="h-8 w-8 text-primary" />
-            <h1 className="text-2xl font-bold text-foreground">HealthCare</h1>
+            <h1 className="text-2xl font-bold text-foreground">MediBook</h1>
           </div>
-          <p className="text-muted-foreground">Healthcare Management System</p>
+          <p className="text-muted-foreground">Healthcare appointments and records</p>
         </div>
 
         <Card className="shadow-elevated">
           <CardHeader>
             <CardTitle>Sign In</CardTitle>
-            <CardDescription>Enter your credentials to access your account</CardDescription>
+            <CardDescription>Enter your credentials (API must be running; use seed accounts after `npm run seed`)</CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-4">
@@ -67,24 +81,37 @@ export default function LoginPage() {
               )}
               <div className="space-y-2">
                 <Label htmlFor="email">Email</Label>
-                <Input id="email" type="email" placeholder="Enter your email" value={email} onChange={(e) => setEmail(e.target.value)} />
+                <Input
+                  id="email"
+                  type="email"
+                  placeholder="Enter your email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="password">Password</Label>
-                <Input id="password" type="password" placeholder="Enter your password" value={password} onChange={(e) => setPassword(e.target.value)} />
+                <Input
+                  id="password"
+                  type="password"
+                  placeholder="Enter your password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                />
               </div>
               <Button type="submit" className="w-full" disabled={loading}>
-                {loading ? "Signing in..." : "Sign In"}
+                {loading ? "Signing in…" : "Sign In"}
               </Button>
             </form>
 
             <div className="mt-6 space-y-3">
-              <p className="text-xs text-muted-foreground text-center">Quick login (demo accounts):</p>
-              <div className="grid grid-cols-3 gap-2">
+              <p className="text-xs text-muted-foreground text-center">Quick fill (seed, password: password)</p>
+              <div className="grid grid-cols-2 gap-2">
                 {[
-                  { label: "Patient", email: "patient@demo.com" },
-                  { label: "Doctor", email: "doctor@demo.com" },
-                  { label: "Admin", email: "admin@demo.com" },
+                  { label: "Patient 1", email: "patient1@medibook.com" },
+                  { label: "Doctor 1", email: "doctor1@medibook.com" },
+                  { label: "Admin", email: "admin@medibook.com" },
+                  { label: "Patient 2", email: "patient2@medibook.com" },
                 ].map((acc) => (
                   <Button key={acc.email} variant="outline" size="sm" onClick={() => quickLogin(acc.email)} className="text-xs">
                     {acc.label}
@@ -94,8 +121,10 @@ export default function LoginPage() {
             </div>
 
             <p className="text-sm text-center text-muted-foreground mt-4">
-              Don't have an account?{" "}
-              <Link to="/register" className="text-primary hover:underline font-medium">Register</Link>
+              Don&apos;t have an account?{" "}
+              <Link to="/register" className="text-primary hover:underline font-medium">
+                Register
+              </Link>
             </p>
           </CardContent>
         </Card>
