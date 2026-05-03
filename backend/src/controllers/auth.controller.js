@@ -14,6 +14,9 @@ const {
 const { verifyRefreshToken } = require("../utils/tokenGenerator");
 const { NODE_ENV } = require("../config/env");
 
+/**
+ * Extracts meta information relating to the user's connection.
+ */
 function clientMeta(req) {
   return {
     ipAddress: req.ip || req.socket?.remoteAddress || null,
@@ -21,6 +24,9 @@ function clientMeta(req) {
   };
 }
 
+/**
+ * Hashes a reset token for secure comparison.
+ */
 function hashResetToken(token) {
   return crypto.createHash("sha256").update(token).digest("hex");
 }

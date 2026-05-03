@@ -1,5 +1,10 @@
 const mongoose = require("mongoose");
 
+/**
+ * SystemConfig Schema
+ * Stores all the dynamic settings for the application (e.g. max appointments, cancellation windows).
+ * Useful for changing application behavior without deploying new code.
+ */
 const systemConfigSchema = new mongoose.Schema(
   {
     key: {

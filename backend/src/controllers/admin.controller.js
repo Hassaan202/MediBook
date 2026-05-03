@@ -33,6 +33,11 @@ function clientMeta(req) {
 
 // ─── Dashboard Stats ───────────────────────────────────────────────────────────
 
+/**
+ * getDashboardStats
+ * Retrieves an aggregated overview of the entire system for the Admin Dashboard.
+ * Includes user counts, appointment statistics, system alerts, and recent activities.
+ */
 async function getDashboardStats(req, res, next) {
   try {
     const now = new Date();

@@ -1,5 +1,9 @@
 const { HTTP_STATUS_CODES } = require("../config/constants");
 
+/**
+ * successResponse
+ * Standardizes the success response format sent to the client.
+ */
 function successResponse(res, data, message, statusCode = HTTP_STATUS_CODES.OK) {
   return res.status(statusCode).json({
     success: true,
@@ -8,6 +12,10 @@ function successResponse(res, data, message, statusCode = HTTP_STATUS_CODES.OK) 
   });
 }
 
+/**
+ * errorResponse
+ * Standardizes the error response format sent to the client.
+ */
 function errorResponse(
   res,
   message,
