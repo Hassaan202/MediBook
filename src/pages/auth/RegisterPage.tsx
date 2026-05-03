@@ -1,6 +1,5 @@
 import React, { useState } from "react";
-import { useNavigate, Link } from "react-router-dom";
-import { useAuth } from "@/hooks/useAuth";
+import { Link, useNavigate } from "react-router-dom";
 import type { UserRole } from "@/types/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,7 +14,12 @@ import {
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Heart, AlertCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { ApiError } from "@/lib/http";
+import { ApiError, request } from "@/lib/http";
+
+type RegisterRes = {
+  message?: string;
+  verificationUrlForDevelopment?: string;
+};
 
 export default function RegisterPage() {
   const [name, setName] = useState("");
@@ -28,20 +32,24 @@ export default function RegisterPage() {
   const [dateOfBirth, setDateOfBirth] = useState("1990-01-15");
   const [gender, setGender] = useState("Male");
   const [bloodType, setBloodType] = useState("O+");
-  const [phone, setPhone] = useState("(555) 123-4567");
-  const [ecName, setEcName] = useState("Emergency Contact");
-  const [ecPhone, setEcPhone] = useState("(555) 987-6543");
+  const [phone, setPhone] = useState("");
+  const [street, setStreet] = useState("");
+  const [city, setCity] = useState("");
+  const [state, setState] = useState("");
+  const [zipCode, setZipCode] = useState("");
+  const [country, setCountry] = useState("");
+  const [ecName, setEcName] = useState("");
+  const [ecPhone, setEcPhone] = useState("");
   const [ecRel, setEcRel] = useState("Family");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const { register } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
-    if (!name || !email || !password) {
+    if (!name.trim() || !email.trim() || !password) {
       setError("Please fill in all required fields");
       return;
     }
@@ -73,7 +81,7 @@ export default function RegisterPage() {
     }
     setLoading(true);
     try {
-      const body: Record<string, unknown> = { name, email, password, role };
+      const body: Record<string, unknown> = { name: name.trim(), email: email.trim(), password, role };
       if (role === "doctor") {
         body.specialty = specialty.trim();
         body.experience = parseFloat(experience);
@@ -83,24 +91,36 @@ export default function RegisterPage() {
         body.gender = gender;
         body.bloodType = bloodType;
         body.phone = phone.trim();
+        body.address = {
+          street: street.trim(),
+          city: city.trim(),
+          state: state.trim(),
+          zipCode: zipCode.trim(),
+          country: country.trim(),
+        };
         body.emergencyContact = {
           name: ecName.trim(),
           phone: ecPhone.trim(),
           relationship: ecRel.trim() || "Family",
         };
       }
-      const session = await register(body);
-      toast({ title: "Account created", description: "Welcome to MediBook" });
-      const dest =
-        session.role === "doctor" ? "/doctor" : session.role === "admin" ? "/admin" : "/patient";
-      navigate(dest);
+      const data = await request<RegisterRes>("/api/auth/register", { method: "POST", json: body });
+      toast({
+        title: "Check your email",
+        description: data?.message ?? "We sent a verification link.",
+      });
+      if (data?.verificationUrlForDevelopment) {
+        toast({
+          title: "Development",
+          description: "SMTP not configured — link logged on server. Check backend terminal or open the copied URL from network tab.",
+        });
+        // eslint-disable-next-line no-console
+        console.info("verificationUrlForDevelopment", data.verificationUrlForDevelopment);
+      }
+      navigate("/registration-pending");
     } catch (err: unknown) {
       const msg =
-        err instanceof ApiError
-          ? err.message
-          : err instanceof Error
-            ? err.message
-            : "Registration failed";
+        err instanceof ApiError ? err.message : err instanceof Error ? err.message : "Registration failed";
       setError(msg);
     } finally {
       setLoading(false);
@@ -108,7 +128,7 @@ export default function RegisterPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background p-4">
+    <div className="min-h-screen flex items-center justify-center bg-background p-4 py-10">
       <div className="w-full max-w-lg space-y-6">
         <div className="text-center space-y-2">
           <div className="flex items-center justify-center gap-2">
@@ -120,8 +140,10 @@ export default function RegisterPage() {
 
         <Card className="shadow-elevated">
           <CardHeader>
-            <CardTitle>Register</CardTitle>
-            <CardDescription>Password: 8+ chars with upper, lower, and digit</CardDescription>
+            <CardTitle>Sign up</CardTitle>
+            <CardDescription>
+              You will verify your email, then an administrator must approve your account before you can sign in.
+            </CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-4">
@@ -131,63 +153,59 @@ export default function RegisterPage() {
                   <span>{error}</span>
                 </div>
               )}
-              <div className="space-y-2">
-                <Label htmlFor="name">Full name</Label>
-                <Input id="name" value={name} onChange={(e) => setName(e.target.value)} required />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="email">Email</Label>
-                <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="password">Password</Label>
-                <Input
-                  id="password"
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Role</Label>
-                <Select value={role} onValueChange={(v) => setRole(v as typeof role)}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="patient">Patient</SelectItem>
-                    <SelectItem value="doctor">Doctor</SelectItem>
-                  </SelectContent>
-                </Select>
+              <div className="grid sm:grid-cols-2 gap-4">
+                <div className="space-y-2 sm:col-span-2">
+                  <Label htmlFor="name">Full name</Label>
+                  <Input id="name" value={name} onChange={(e) => setName(e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="email">Email</Label>
+                  <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="password">Password</Label>
+                  <Input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
+                </div>
+                <div className="space-y-2 sm:col-span-2">
+                  <Label>I am registering as</Label>
+                  <Select value={role} onValueChange={(v) => setRole(v as Exclude<UserRole, "admin">)}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="patient">Patient</SelectItem>
+                      <SelectItem value="doctor">Doctor</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
 
-              {role === "doctor" && (
-                <>
-                  <div className="space-y-2">
+              {role === "doctor" ? (
+                <div className="grid sm:grid-cols-2 gap-4 border-t pt-4">
+                  <div className="space-y-2 sm:col-span-2">
                     <Label>Specialty</Label>
-                    <Input value={specialty} onChange={(e) => setSpecialty(e.target.value)} placeholder="e.g. Cardiology" />
+                    <Input value={specialty} onChange={(e) => setSpecialty(e.target.value)} />
                   </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-2">
-                      <Label>Years experience</Label>
-                      <Input type="number" min={0} value={experience} onChange={(e) => setExperience(e.target.value)} />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Consultation fee (USD)</Label>
-                      <Input type="number" min={0} step="1" value={fees} onChange={(e) => setFees(e.target.value)} />
-                    </div>
-                  </div>
-                </>
-              )}
-
-              {role === "patient" && (
-                <>
                   <div className="space-y-2">
-                    <Label>Date of birth</Label>
-                    <Input type="date" value={dateOfBirth} onChange={(e) => setDateOfBirth(e.target.value)} />
+                    <Label>Experience (years)</Label>
+                    <Input value={experience} onChange={(e) => setExperience(e.target.value)} />
                   </div>
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-2">
+                    <Label>Consultation fee</Label>
+                    <Input value={fees} onChange={(e) => setFees(e.target.value)} />
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-4 border-t pt-4">
+                  <div className="grid sm:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label>Date of birth</Label>
+                      <Input type="date" value={dateOfBirth} onChange={(e) => setDateOfBirth(e.target.value)} />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Phone</Label>
+                      <Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="(555) 123-4567" />
+                    </div>
                     <div className="space-y-2">
                       <Label>Gender</Label>
                       <Select value={gender} onValueChange={setGender}>
@@ -195,9 +213,11 @@ export default function RegisterPage() {
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="Male">Male</SelectItem>
-                          <SelectItem value="Female">Female</SelectItem>
-                          <SelectItem value="Other">Other</SelectItem>
+                          {["Male", "Female", "Other"].map((g) => (
+                            <SelectItem key={g} value={g}>
+                              {g}
+                            </SelectItem>
+                          ))}
                         </SelectContent>
                       </Select>
                     </div>
@@ -208,9 +228,9 @@ export default function RegisterPage() {
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          {["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"].map((bt) => (
-                            <SelectItem key={bt} value={bt}>
-                              {bt}
+                          {["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"].map((b) => (
+                            <SelectItem key={b} value={b}>
+                              {b}
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -218,30 +238,31 @@ export default function RegisterPage() {
                     </div>
                   </div>
                   <div className="space-y-2">
-                    <Label>Phone</Label>
-                    <Input value={phone} onChange={(e) => setPhone(e.target.value)} />
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-2">
-                      <Label>Emergency contact name</Label>
-                      <Input value={ecName} onChange={(e) => setEcName(e.target.value)} />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Emergency contact phone</Label>
-                      <Input value={ecPhone} onChange={(e) => setEcPhone(e.target.value)} />
+                    <Label>Address (optional)</Label>
+                    <div className="grid sm:grid-cols-2 gap-2">
+                      <Input placeholder="Street" value={street} onChange={(e) => setStreet(e.target.value)} />
+                      <Input placeholder="City" value={city} onChange={(e) => setCity(e.target.value)} />
+                      <Input placeholder="State" value={state} onChange={(e) => setState(e.target.value)} />
+                      <Input placeholder="ZIP" value={zipCode} onChange={(e) => setZipCode(e.target.value)} />
+                      <Input className="sm:col-span-2" placeholder="Country" value={country} onChange={(e) => setCountry(e.target.value)} />
                     </div>
                   </div>
                   <div className="space-y-2">
-                    <Label>Relationship (optional)</Label>
-                    <Input value={ecRel} onChange={(e) => setEcRel(e.target.value)} />
+                    <Label className="text-muted-foreground text-xs">Emergency contact</Label>
+                    <div className="grid sm:grid-cols-3 gap-2">
+                      <Input placeholder="Name" value={ecName} onChange={(e) => setEcName(e.target.value)} />
+                      <Input placeholder="Phone" value={ecPhone} onChange={(e) => setEcPhone(e.target.value)} />
+                      <Input placeholder="Relationship" value={ecRel} onChange={(e) => setEcRel(e.target.value)} />
+                    </div>
                   </div>
-                </>
+                </div>
               )}
 
               <Button type="submit" className="w-full" disabled={loading}>
-                {loading ? "Creating account…" : "Create account"}
+                {loading ? "Submitting…" : "Create account"}
               </Button>
             </form>
+
             <p className="text-sm text-center text-muted-foreground mt-4">
               Already have an account?{" "}
               <Link to="/login" className="text-primary hover:underline font-medium">

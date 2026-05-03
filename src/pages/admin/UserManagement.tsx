@@ -1,138 +1,242 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Search, Eye, Ban, Trash2 } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Search, Eye, Ban, Trash2, UserPlus } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { request } from "@/lib/http";
+import { useAuth } from "@/hooks/useAuth";
 
-type PatientRow = {
+type AdminUser = {
   _id: string;
-  userDetails?: { name?: string; email?: string; isActive?: boolean };
-};
-
-type DoctorRow = {
-  id: string;
-  specialty?: string;
-  user?: { id?: string; name?: string; email?: string; isActive?: boolean };
-};
-
-type ListPatients = { patients: PatientRow[]; pagination: { total: number } };
-type ListDoctors = { doctors: DoctorRow[]; pagination: { total: number } };
-
-type UserRow = {
-  key: string;
-  profileId: string;
-  userId: string;
   name: string;
   email: string;
-  role: "patient" | "doctor";
-  specialty?: string;
-  isActive: boolean;
+  role: string;
+  isActive?: boolean;
+  createdAt?: string;
 };
+
+type ListUsersRes = { users: AdminUser[]; pagination: { total: number } };
+
+type UserDetailRes = {
+  user: AdminUser;
+  profile: Record<string, unknown> | null;
+  recentActivity: { action?: string; description?: string; timestamp?: string }[];
+};
+
+function passwordClientError(pw: string): string | null {
+  if (pw.length < 8) return "Password must be at least 8 characters";
+  if (!/[a-z]/.test(pw) || !/[A-Z]/.test(pw) || !/\d/.test(pw)) {
+    return "Password must include uppercase, lowercase, and a number";
+  }
+  return null;
+}
 
 export default function UserManagement() {
   const [search, setSearch] = useState("");
-  const [viewUser, setViewUser] = useState<UserRow | null>(null);
+  const [viewId, setViewId] = useState<string | null>(null);
+  const [patientOpen, setPatientOpen] = useState(false);
+  const [doctorOpen, setDoctorOpen] = useState(false);
   const { toast } = useToast();
   const qc = useQueryClient();
+  const auth = useAuth();
+  const sessionUserId = auth?.user?.id;
 
-  const { data: pData } = useQuery({
-    queryKey: ["admin-patients", search],
+  const { data, isLoading } = useQuery({
+    queryKey: ["admin-users", search],
     queryFn: () =>
-      request<ListPatients>(
-        `/api/patients?limit=200&page=1${search.trim() ? `&search=${encodeURIComponent(search.trim())}` : ""}`
+      request<ListUsersRes>(
+        `/api/admin/users?limit=200&page=1${search.trim() ? `&search=${encodeURIComponent(search.trim())}` : ""}`
       ),
   });
 
-  const { data: dData } = useQuery({
-    queryKey: ["admin-doctors", search],
-    queryFn: () =>
-      request<ListDoctors>(
-        `/api/doctors?limit=200&page=1${search.trim() ? `&search=${encodeURIComponent(search.trim())}` : ""}`
-      ),
+  const { data: detail } = useQuery({
+    queryKey: ["admin-user", viewId],
+    queryFn: () => request<UserDetailRes>(`/api/admin/users/${viewId}`),
+    enabled: Boolean(viewId),
   });
 
-  const users = useMemo(() => {
-    const rows: UserRow[] = [];
-    (pData?.patients ?? []).forEach((p) => {
-      const u = p.userDetails;
-      if (!u) return;
-      rows.push({
-        key: `p-${p._id}`,
-        profileId: String(p._id),
-        userId: String((u as { _id?: string })._id || ""),
-        name: u.name || "—",
-        email: u.email || "",
-        role: "patient",
-        isActive: u.isActive !== false,
-      });
-    });
-    (dData?.doctors ?? []).forEach((d) => {
-      const u = d.user;
-      rows.push({
-        key: `d-${d.id}`,
-        profileId: String(d.id),
-        userId: String(u?.id || ""),
-        name: u?.name || "—",
-        email: u?.email || "",
-        role: "doctor",
-        specialty: d.specialty,
-        isActive: u?.isActive !== false,
-      });
-    });
-    return rows.sort((a, b) => a.name.localeCompare(b.name));
-  }, [pData, dData]);
+  const users = data?.users ?? [];
+  const total = data?.pagination?.total ?? users.length;
+
+  const [pEmail, setPEmail] = useState("");
+  const [pPassword, setPPassword] = useState("");
+  const [pName, setPName] = useState("");
+  const [pDob, setPDob] = useState("1990-01-15");
+  const [pGender, setPGender] = useState("Male");
+  const [pBlood, setPBlood] = useState("O+");
+  const [pPhone, setPPhone] = useState("");
+  const [pStreet, setPStreet] = useState("");
+  const [pCity, setPCity] = useState("");
+  const [pState, setPState] = useState("");
+  const [pZip, setPZip] = useState("");
+  const [pCountry, setPCountry] = useState("");
+  const [ecName, setEcName] = useState("");
+  const [ecPhone, setEcPhone] = useState("");
+  const [ecRel, setEcRel] = useState("Family");
+
+  const [dEmail, setDEmail] = useState("");
+  const [dPassword, setDPassword] = useState("");
+  const [dName, setDName] = useState("");
+  const [dSpecialty, setDSpecialty] = useState("");
+  const [dExperience, setDExperience] = useState("5");
+  const [dFees, setDFees] = useState("150");
+
+  const resetPatientForm = () => {
+    setPEmail("");
+    setPPassword("");
+    setPName("");
+    setPDob("1990-01-15");
+    setPGender("Male");
+    setPBlood("O+");
+    setPPhone("");
+    setPStreet("");
+    setPCity("");
+    setPState("");
+    setPZip("");
+    setPCountry("");
+    setEcName("");
+    setEcPhone("");
+    setEcRel("Family");
+  };
+
+  const resetDoctorForm = () => {
+    setDEmail("");
+    setDPassword("");
+    setDName("");
+    setDSpecialty("");
+    setDExperience("5");
+    setDFees("150");
+  };
+
+  const createPatientMutation = useMutation({
+    mutationFn: () =>
+      request("/api/admin/users", {
+        method: "POST",
+        json: {
+          email: pEmail.trim(),
+          password: pPassword,
+          name: pName.trim(),
+          role: "patient",
+          dateOfBirth: pDob,
+          gender: pGender,
+          bloodType: pBlood,
+          phone: pPhone.trim(),
+          address: {
+            street: pStreet.trim(),
+            city: pCity.trim(),
+            state: pState.trim(),
+            zipCode: pZip.trim(),
+            country: pCountry.trim(),
+          },
+          emergencyContact: {
+            name: ecName.trim(),
+            phone: ecPhone.trim(),
+            relationship: ecRel.trim() || "Family",
+          },
+        },
+      }),
+    onSuccess: () => {
+      toast({ title: "Patient created" });
+      setPatientOpen(false);
+      resetPatientForm();
+      void qc.invalidateQueries({ queryKey: ["admin-users"] });
+    },
+    onError: (e: Error) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
+  const createDoctorMutation = useMutation({
+    mutationFn: () =>
+      request("/api/admin/users", {
+        method: "POST",
+        json: {
+          email: dEmail.trim(),
+          password: dPassword,
+          name: dName.trim(),
+          role: "doctor",
+          specialty: dSpecialty.trim(),
+          experience: Number(dExperience),
+          fees: Number(dFees),
+        },
+      }),
+    onSuccess: () => {
+      toast({ title: "Doctor created" });
+      setDoctorOpen(false);
+      resetDoctorForm();
+      void qc.invalidateQueries({ queryKey: ["admin-users"] });
+    },
+    onError: (e: Error) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
 
   const toggleMutation = useMutation({
-    mutationFn: ({ userId, isActive }: { userId: string; isActive: boolean }) =>
-      request(`/api/users/${userId}/active`, { method: "PATCH", json: { isActive } }),
+    mutationFn: async ({ id, nextActive }: { id: string; nextActive: boolean }) => {
+      const path = nextActive ? "activate" : "deactivate";
+      await request(`/api/admin/users/${id}/${path}`, { method: "PATCH" });
+    },
     onSuccess: () => {
       toast({ title: "Updated" });
-      void qc.invalidateQueries({ queryKey: ["admin-patients"] });
-      void qc.invalidateQueries({ queryKey: ["admin-doctors"] });
+      void qc.invalidateQueries({ queryKey: ["admin-users"] });
+      void qc.invalidateQueries({ queryKey: ["admin-user"] });
     },
     onError: (e: Error) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
 
   const deleteMutation = useMutation({
-    mutationFn: async (row: UserRow) => {
-      if (row.role === "patient") {
-        await request(`/api/patients/${row.profileId}`, { method: "DELETE" });
-      } else {
-        await request(`/api/doctors/${row.profileId}`, { method: "DELETE" });
-      }
-    },
+    mutationFn: (id: string) => request(`/api/admin/users/${id}?hard=true`, { method: "DELETE" }),
     onSuccess: () => {
-      toast({ title: "Deleted" });
-      void qc.invalidateQueries({ queryKey: ["admin-patients"] });
-      void qc.invalidateQueries({ queryKey: ["admin-doctors"] });
+      toast({ title: "Removed" });
+      void qc.invalidateQueries({ queryKey: ["admin-users"] });
+      setViewId(null);
     },
     onError: (e: Error) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
 
-  const filtered = users.filter(
-    (u) =>
-      u.name.toLowerCase().includes(search.toLowerCase()) ||
-      u.email.toLowerCase().includes(search.toLowerCase())
-  );
+  const detailText = (row: AdminUser) => {
+    if (row.role === "admin") return "Administrator";
+    return row.role === "doctor" ? "Doctor profile" : "Patient profile";
+  };
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 className="text-2xl font-bold text-foreground">User management</h2>
-          <p className="text-muted-foreground">{users.length} profiles loaded</p>
+          <p className="text-muted-foreground">
+            {isLoading ? "Loading…" : `${total} user${total === 1 ? "" : "s"} from the database`}
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" size="sm" onClick={() => setPatientOpen(true)}>
+            <UserPlus className="h-4 w-4 mr-2" />
+            Add patient
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => setDoctorOpen(true)}>
+            <UserPlus className="h-4 w-4 mr-2" />
+            Add doctor
+          </Button>
         </div>
       </div>
 
       <div className="relative max-w-sm">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-        <Input placeholder="Filter list…" value={search} onChange={(e) => setSearch(e.target.value)} className="pl-10" />
+        <Input
+          placeholder="Search name or email…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="pl-10"
+        />
       </div>
 
       <Card>
@@ -148,91 +252,99 @@ export default function UserManagement() {
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((u) => (
-                  <tr key={u.key} className="border-b last:border-0 hover:bg-muted/30">
-                    <td className="p-4">
-                      <div className="flex items-center gap-3">
-                        <Avatar className="h-8 w-8">
-                          <AvatarFallback className="bg-primary/10 text-primary text-xs">
-                            {u.name
-                              .split(" ")
-                              .map((n) => n[0])
-                              .join("")
-                              .slice(0, 2)}
-                          </AvatarFallback>
-                        </Avatar>
-                        <div>
-                          <p className="font-medium text-foreground">{u.name}</p>
-                          <p className="text-xs text-muted-foreground">{u.email}</p>
+                {users.map((u) => {
+                  const active = u.isActive !== false;
+                  const isAdmin = u.role === "admin";
+                  const isSelf = sessionUserId && String(u._id) === String(sessionUserId);
+                  return (
+                    <tr key={u._id} className="border-b last:border-0 hover:bg-muted/30">
+                      <td className="p-4">
+                        <div className="flex items-center gap-3">
+                          <Avatar className="h-8 w-8">
+                            <AvatarFallback className="bg-primary/10 text-primary text-xs">
+                              {u.name
+                                .split(" ")
+                                .map((n) => n[0])
+                                .join("")
+                                .slice(0, 2)}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div>
+                            <p className="font-medium text-foreground">{u.name}</p>
+                            <p className="text-xs text-muted-foreground">{u.email}</p>
+                          </div>
                         </div>
-                      </div>
-                    </td>
-                    <td className="p-4">
-                      <Badge variant="outline" className="capitalize">
-                        {u.role}
-                      </Badge>
-                    </td>
-                    <td className="p-4">
-                      <Badge
-                        variant="outline"
-                        className={
-                          u.isActive ? "bg-success/10 text-success border-success/20" : "bg-warning/10 text-warning border-warning/20"
-                        }
-                      >
-                        {u.isActive ? "active" : "inactive"}
-                      </Badge>
-                    </td>
-                    <td className="p-4 text-right">
-                      <div className="flex items-center justify-end gap-1">
-                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setViewUser(u)}>
-                          <Eye className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8"
-                          disabled={!u.userId || toggleMutation.isPending}
-                          onClick={() =>
-                            u.userId &&
-                            toggleMutation.mutate({ userId: u.userId, isActive: !u.isActive })
+                      </td>
+                      <td className="p-4">
+                        <Badge variant="outline" className="capitalize">
+                          {u.role}
+                        </Badge>
+                      </td>
+                      <td className="p-4">
+                        <Badge
+                          variant="outline"
+                          className={
+                            active
+                              ? "bg-success/10 text-success border-success/20"
+                              : "bg-warning/10 text-warning border-warning/20"
                           }
                         >
-                          <Ban className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 text-destructive"
-                          disabled={deleteMutation.isPending}
-                          onClick={() => {
-                            if (window.confirm(`Delete ${u.role} ${u.name}? This cannot be undone.`)) {
-                              deleteMutation.mutate(u);
-                            }
-                          }}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                          {active ? "active" : "inactive"}
+                        </Badge>
+                      </td>
+                      <td className="p-4 text-right">
+                        <div className="flex items-center justify-end gap-1">
+                          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setViewId(u._id)}>
+                            <Eye className="h-4 w-4" />
+                          </Button>
+                          {!isAdmin && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8"
+                              disabled={toggleMutation.isPending}
+                              onClick={() => toggleMutation.mutate({ id: u._id, nextActive: !active })}
+                            >
+                              <Ban className="h-4 w-4" />
+                            </Button>
+                          )}
+                          {!isAdmin && !isSelf && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-destructive"
+                              disabled={deleteMutation.isPending}
+                              onClick={() => {
+                                if (window.confirm(`Permanently remove ${u.name} (${u.role})? This cannot be undone.`)) {
+                                  deleteMutation.mutate(u._id);
+                                }
+                              }}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
         </CardContent>
       </Card>
 
-      <Dialog open={!!viewUser} onOpenChange={() => setViewUser(null)}>
-        <DialogContent>
+      <Dialog open={Boolean(viewId)} onOpenChange={(o) => !o && setViewId(null)}>
+        <DialogContent className="max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>User details</DialogTitle>
           </DialogHeader>
-          {viewUser && (
-            <div className="space-y-3 text-sm">
+          {detail?.user && (
+            <div className="space-y-4 text-sm">
               <div className="flex items-center gap-3">
                 <Avatar className="h-12 w-12">
                   <AvatarFallback className="bg-primary text-primary-foreground">
-                    {viewUser.name
+                    {detail.user.name
                       .split(" ")
                       .map((n) => n[0])
                       .join("")
@@ -240,28 +352,209 @@ export default function UserManagement() {
                   </AvatarFallback>
                 </Avatar>
                 <div>
-                  <p className="font-semibold text-foreground text-base">{viewUser.name}</p>
-                  <p className="text-muted-foreground">{viewUser.email}</p>
+                  <p className="font-semibold text-foreground text-base">{detail.user.name}</p>
+                  <p className="text-muted-foreground">{detail.user.email}</p>
+                  <p className="text-xs text-muted-foreground mt-1">{detailText(detail.user)}</p>
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="p-3 rounded-lg bg-muted/50">
-                  <p className="text-xs text-muted-foreground">Role</p>
-                  <p className="font-medium capitalize text-foreground">{viewUser.role}</p>
+              {detail.profile && Object.keys(detail.profile).length > 0 && (
+                <div className="rounded-lg bg-muted/50 p-3">
+                  <p className="text-xs text-muted-foreground mb-2">Profile (from database)</p>
+                  <pre className="text-xs whitespace-pre-wrap break-words max-h-40 overflow-auto">
+                    {JSON.stringify(detail.profile, null, 2)}
+                  </pre>
                 </div>
-                <div className="p-3 rounded-lg bg-muted/50">
-                  <p className="text-xs text-muted-foreground">Status</p>
-                  <p className="font-medium capitalize text-foreground">{viewUser.isActive ? "active" : "inactive"}</p>
+              )}
+              {detail.recentActivity?.length ? (
+                <div>
+                  <p className="text-xs text-muted-foreground mb-2">Recent activity</p>
+                  <ul className="space-y-2 max-h-48 overflow-y-auto">
+                    {detail.recentActivity.map((a, i) => (
+                      <li key={`${a.timestamp}-${i}`} className="text-xs border-b border-border/50 pb-2 last:border-0">
+                        <span className="font-medium">{a.action}</span>
+                        {a.description ? ` — ${a.description}` : ""}
+                        {a.timestamp ? (
+                          <span className="block text-muted-foreground">{String(a.timestamp)}</span>
+                        ) : null}
+                      </li>
+                    ))}
+                  </ul>
                 </div>
-                {viewUser.specialty && (
-                  <div className="p-3 rounded-lg bg-muted/50 col-span-2">
-                    <p className="text-xs text-muted-foreground">Specialty</p>
-                    <p className="font-medium text-foreground">{viewUser.specialty}</p>
-                  </div>
-                )}
-              </div>
+              ) : null}
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={patientOpen}
+        onOpenChange={(o) => {
+          setPatientOpen(o);
+          if (!o) resetPatientForm();
+        }}
+      >
+        <DialogContent className="max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Create patient</DialogTitle>
+          </DialogHeader>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="space-y-2 sm:col-span-2">
+              <Label>Full name</Label>
+              <Input value={pName} onChange={(e) => setPName(e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label>Email</Label>
+              <Input type="email" value={pEmail} onChange={(e) => setPEmail(e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label>Password</Label>
+              <Input type="password" value={pPassword} onChange={(e) => setPPassword(e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label>Date of birth</Label>
+              <Input type="date" value={pDob} onChange={(e) => setPDob(e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label>Phone</Label>
+              <Input value={pPhone} onChange={(e) => setPPhone(e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label>Gender</Label>
+              <Select value={pGender} onValueChange={setPGender}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {["Male", "Female", "Other"].map((g) => (
+                    <SelectItem key={g} value={g}>
+                      {g}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Blood type</Label>
+              <Select value={pBlood} onValueChange={setPBlood}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"].map((b) => (
+                    <SelectItem key={b} value={b}>
+                      {b}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2 sm:col-span-2">
+              <Label>Address</Label>
+              <div className="grid gap-2 sm:grid-cols-2">
+                <Input placeholder="Street" value={pStreet} onChange={(e) => setPStreet(e.target.value)} />
+                <Input placeholder="City" value={pCity} onChange={(e) => setPCity(e.target.value)} />
+                <Input placeholder="State" value={pState} onChange={(e) => setPState(e.target.value)} />
+                <Input placeholder="ZIP" value={pZip} onChange={(e) => setPZip(e.target.value)} />
+                <Input className="sm:col-span-2" placeholder="Country" value={pCountry} onChange={(e) => setPCountry(e.target.value)} />
+              </div>
+            </div>
+            <div className="space-y-2 sm:col-span-2 border-t pt-3">
+              <p className="text-xs font-medium text-muted-foreground">Emergency contact</p>
+              <div className="grid gap-2 sm:grid-cols-3">
+                <Input placeholder="Name" value={ecName} onChange={(e) => setEcName(e.target.value)} />
+                <Input placeholder="Phone" value={ecPhone} onChange={(e) => setEcPhone(e.target.value)} />
+                <Input placeholder="Relationship" value={ecRel} onChange={(e) => setEcRel(e.target.value)} />
+              </div>
+            </div>
+          </div>
+          <Button
+            className="w-full mt-4"
+            disabled={createPatientMutation.isPending}
+            onClick={() => {
+              const pe = passwordClientError(pPassword);
+              if (pe) {
+                toast({ title: "Validation", description: pe, variant: "destructive" });
+                return;
+              }
+              if (!pName.trim() || !pEmail.trim() || !pPhone.trim() || !ecName.trim() || !ecPhone.trim()) {
+                toast({
+                  title: "Validation",
+                  description: "Name, email, phone, and emergency contact are required.",
+                  variant: "destructive",
+                });
+                return;
+              }
+              createPatientMutation.mutate();
+            }}
+          >
+            {createPatientMutation.isPending ? "Creating…" : "Create patient"}
+          </Button>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={doctorOpen}
+        onOpenChange={(o) => {
+          setDoctorOpen(o);
+          if (!o) resetDoctorForm();
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Create doctor</DialogTitle>
+          </DialogHeader>
+          <div className="grid gap-3">
+            <div className="space-y-2">
+              <Label>Full name</Label>
+              <Input value={dName} onChange={(e) => setDName(e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label>Email</Label>
+              <Input type="email" value={dEmail} onChange={(e) => setDEmail(e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label>Password</Label>
+              <Input type="password" value={dPassword} onChange={(e) => setDPassword(e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label>Specialty</Label>
+              <Input value={dSpecialty} onChange={(e) => setDSpecialty(e.target.value)} />
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-2">
+                <Label>Experience (years)</Label>
+                <Input value={dExperience} onChange={(e) => setDExperience(e.target.value)} />
+              </div>
+              <div className="space-y-2">
+                <Label>Fees</Label>
+                <Input value={dFees} onChange={(e) => setDFees(e.target.value)} />
+              </div>
+            </div>
+          </div>
+          <Button
+            className="w-full mt-4"
+            disabled={createDoctorMutation.isPending}
+            onClick={() => {
+              const pe = passwordClientError(dPassword);
+              if (pe) {
+                toast({ title: "Validation", description: pe, variant: "destructive" });
+                return;
+              }
+              if (!dName.trim() || !dEmail.trim() || !dSpecialty.trim()) {
+                toast({ title: "Validation", description: "Name, email, and specialty are required.", variant: "destructive" });
+                return;
+              }
+              const ex = Number(dExperience);
+              const fe = Number(dFees);
+              if (!Number.isFinite(ex) || ex < 0 || !Number.isFinite(fe) || fe < 0) {
+                toast({ title: "Validation", description: "Experience and fees must be valid numbers.", variant: "destructive" });
+                return;
+              }
+              createDoctorMutation.mutate();
+            }}
+          >
+            {createDoctorMutation.isPending ? "Creating…" : "Create doctor"}
+          </Button>
         </DialogContent>
       </Dialog>
     </div>

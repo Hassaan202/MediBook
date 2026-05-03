@@ -13,8 +13,11 @@ router.get("/dashboard", ctrl.getDashboardStats);
 
 // User management
 router.get("/users", ctrl.getAllUsers);
+router.get("/pending-registrations", ctrl.getPendingRegistrations);
 router.get("/users/:id", ctrl.getUserById);
 router.post("/users", ctrl.createUser);
+router.post("/registrations/:id/approve", ctrl.approveRegistration);
+router.post("/registrations/:id/reject", ctrl.rejectRegistration);
 router.put("/users/:id", ctrl.updateUser);
 router.delete("/users/:id", ctrl.deleteUser);
 router.patch("/users/:id/activate", ctrl.activateUser);

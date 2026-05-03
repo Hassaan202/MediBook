@@ -16,7 +16,6 @@ const notificationsRoutes = require("./routes/notifications.routes");
 const medicalRecordsRoutes = require("./routes/medicalRecords.routes");
 const prescriptionsRoutes = require("./routes/prescriptions.routes");
 const reviewsRoutes = require("./routes/reviews.routes");
-const auditLogsRoutes = require("./routes/auditLogs.routes");
 const adminRoutes = require("./routes/admin.routes");
 const analyticsRoutes = require("./routes/analytics.routes");
 const systemConfigRoutes = require("./routes/systemConfig.routes");
@@ -81,7 +80,6 @@ app.use(
 
 app.use("/api/", apiLimiter);
 app.use("/api/auth/login", authLimiter);
-app.use("/api/auth/register", authLimiter);
 
 // ─── API Routes ───────────────────────────────────────────────────────────────
 
@@ -94,7 +92,6 @@ app.use("/api/notifications", notificationsRoutes);
 app.use("/api/medical-records", medicalRecordsRoutes);
 app.use("/api/prescriptions", prescriptionsRoutes);
 app.use("/api/reviews", reviewsRoutes);
-app.use("/api/audit-logs", auditLogsRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/analytics", analyticsRoutes);
 app.use("/api/system-config", systemConfigRoutes);

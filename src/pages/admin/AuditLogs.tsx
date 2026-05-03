@@ -14,19 +14,31 @@ type LogRow = {
   id: string;
   userName: string;
   action: string;
-  details: string;
-  type: string;
+  description?: string;
+  details?: unknown;
+  category: string;
   timestamp: string;
 };
 
 type LogsRes = { logs: LogRow[]; pagination: { total: number } };
+
+function detailCell(log: LogRow): string {
+  if (log.description) return log.description;
+  if (log.details == null) return "";
+  if (typeof log.details === "string") return log.details;
+  try {
+    return JSON.stringify(log.details);
+  } catch {
+    return String(log.details);
+  }
+}
 
 export default function AuditLogs() {
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
   const { toast } = useToast();
 
-  const q = `/api/audit-logs?limit=150&page=1${typeFilter !== "all" ? `&category=${encodeURIComponent(typeFilter)}` : ""}`;
+  const q = `/api/admin/audit-logs?limit=150&page=1${typeFilter !== "all" ? `&category=${encodeURIComponent(typeFilter)}` : ""}`;
 
   const { data, isLoading, isError, error } = useQuery({
     queryKey: ["admin-audit", typeFilter],
@@ -37,10 +49,12 @@ export default function AuditLogs() {
   const filtered = rows.filter((log) => {
     const s = search.toLowerCase();
     if (!s) return true;
+    const detail = detailCell(log).toLowerCase();
     return (
       log.userName.toLowerCase().includes(s) ||
       log.action.toLowerCase().includes(s) ||
-      String(log.details).toLowerCase().includes(s)
+      log.category.toLowerCase().includes(s) ||
+      detail.includes(s)
     );
   });
 
@@ -102,7 +116,7 @@ export default function AuditLogs() {
                   <th className="p-4 font-medium">User</th>
                   <th className="p-4 font-medium">Action</th>
                   <th className="p-4 font-medium">Details</th>
-                  <th className="p-4 font-medium">Type</th>
+                  <th className="p-4 font-medium">Category</th>
                   <th className="p-4 font-medium">Timestamp</th>
                 </tr>
               </thead>
@@ -111,9 +125,9 @@ export default function AuditLogs() {
                   <tr key={log.id} className="border-b last:border-0 hover:bg-muted/30">
                     <td className="p-4 font-medium text-foreground">{log.userName}</td>
                     <td className="p-4 text-foreground">{log.action}</td>
-                    <td className="p-4 text-muted-foreground max-w-xs truncate">{log.details}</td>
+                    <td className="p-4 text-muted-foreground max-w-xs truncate">{detailCell(log)}</td>
                     <td className="p-4">
-                      <StatusBadge status={log.type} />
+                      <StatusBadge status={log.category} />
                     </td>
                     <td className="p-4 text-muted-foreground text-xs whitespace-nowrap">
                       {(() => {

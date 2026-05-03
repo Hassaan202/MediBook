@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import type { UserRole } from "@/types/auth";
 import { Button } from "@/components/ui/button";
@@ -69,7 +69,9 @@ export default function LoginPage() {
         <Card className="shadow-elevated">
           <CardHeader>
             <CardTitle>Sign In</CardTitle>
-            <CardDescription>Enter your credentials (API must be running; use seed accounts after `npm run seed`)</CardDescription>
+            <CardDescription>
+              Sign in after your email is verified and an administrator has approved your account. Admins can still create accounts directly from the admin panel.
+            </CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-4">
@@ -104,28 +106,34 @@ export default function LoginPage() {
               </Button>
             </form>
 
-            <div className="mt-6 space-y-3">
-              <p className="text-xs text-muted-foreground text-center">Quick fill (seed, password: password)</p>
-              <div className="grid grid-cols-2 gap-2">
-                {[
-                  { label: "Patient 1", email: "patient1@medibook.com" },
-                  { label: "Doctor 1", email: "doctor1@medibook.com" },
-                  { label: "Admin", email: "admin@medibook.com" },
-                  { label: "Patient 2", email: "patient2@medibook.com" },
-                ].map((acc) => (
-                  <Button key={acc.email} variant="outline" size="sm" onClick={() => quickLogin(acc.email)} className="text-xs">
-                    {acc.label}
-                  </Button>
-                ))}
-              </div>
-            </div>
-
             <p className="text-sm text-center text-muted-foreground mt-4">
-              Don&apos;t have an account?{" "}
+              New patient or doctor?{" "}
               <Link to="/register" className="text-primary hover:underline font-medium">
-                Register
+                Sign up
+              </Link>
+              {" · "}
+              <Link to="/resend-verification" className="text-primary hover:underline font-medium">
+                Resend verification
               </Link>
             </p>
+
+            {import.meta.env.DEV && (
+              <div className="mt-6 space-y-3">
+                <p className="text-xs text-muted-foreground text-center">Dev quick fill (seed, password: password)</p>
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    { label: "Patient 1", email: "patient1@medibook.com" },
+                    { label: "Doctor 1", email: "doctor1@medibook.com" },
+                    { label: "Admin", email: "admin@medibook.com" },
+                    { label: "Patient 2", email: "patient2@medibook.com" },
+                  ].map((acc) => (
+                    <Button key={acc.email} variant="outline" size="sm" onClick={() => quickLogin(acc.email)} className="text-xs">
+                      {acc.label}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>

@@ -33,6 +33,13 @@ const userSchema = new mongoose.Schema(
     name: { type: String, required: true, trim: true },
     avatar: { type: String, default: null },
     isActive: { type: Boolean, default: true },
+    /** Self-registered users start false until they click the email link. Admin-created accounts set true. */
+    emailVerified: { type: Boolean, default: true },
+    /** Self-registered users start false until an admin approves. Admin-created accounts set true. */
+    registrationApproved: { type: Boolean, default: true },
+    registrationRejectedAt: { type: Date, default: null },
+    emailVerificationToken: { type: String, default: null, select: false },
+    emailVerificationExpires: { type: Date, default: null, select: false },
     lastLogin: { type: Date, default: null },
     refreshToken: { type: String, default: null, select: false },
     passwordResetToken: { type: String, default: null, select: false },
@@ -43,6 +50,7 @@ const userSchema = new mongoose.Schema(
 
 userSchema.index({ role: 1 });
 userSchema.index({ isActive: 1 });
+userSchema.index({ emailVerified: 1, registrationApproved: 1 });
 
 userSchema.pre("save", async function hashPasswordPreSave(next) {
   if (!this.isModified("password")) {

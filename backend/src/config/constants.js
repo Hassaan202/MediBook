@@ -73,6 +73,19 @@ const ERROR_MESSAGES = {
   PRESCRIPTION_EXPIRED: "Prescription can no longer be edited",
   REVIEW_EXISTS: "A review already exists for this appointment",
   FILE_UPLOAD_INVALID: "Invalid file type or size",
+  ADMIN_USER_ROLE_FORBIDDEN:
+    "Administrator accounts cannot be created through this endpoint.",
+  CREATE_USER_ROLE_INVALID:
+    "Only patient and doctor accounts can be created here.",
+  ADMIN_ACCOUNT_PROTECTED:
+    "Administrator accounts cannot be changed or removed through this endpoint.",
+  CANNOT_DELETE_SELF: "You cannot delete your own user account.",
+  EMAIL_NOT_VERIFIED: "Please verify your email before signing in. Check your inbox for the verification link.",
+  REGISTRATION_PENDING_APPROVAL:
+    "Your email is verified. An administrator must approve your account before you can sign in.",
+  REGISTRATION_REJECTED:
+    "Your registration was not approved. Contact the clinic if you believe this is a mistake.",
+  INVALID_VERIFICATION_TOKEN: "Invalid or expired email verification link.",
 };
 
 const APPOINTMENT_STATUS = {

@@ -22,7 +22,12 @@ const {
   AUDIT_CATEGORIES,
 } = require("../config/constants");
 const { generateAppointmentReport, generateDoctorReport, generatePatientReport, exportToCSV, exportToJSON } = require("../services/reportService");
-const { sendWelcomeEmail, sendSystemAnnouncement } = require("../services/emailService");
+const {
+  sendWelcomeEmail,
+  sendSystemAnnouncement,
+  sendRegistrationApprovedEmail,
+  sendRegistrationRejectedEmail,
+} = require("../services/emailService");
 
 function clientMeta(req) {
   return {
@@ -195,6 +200,19 @@ async function getUserById(req, res, next) {
   }
 }
 
+const defaultDoctorWorkingHours = () => {
+  const day = () => ({ start: "09:00", end: "17:00" });
+  return {
+    monday: day(),
+    tuesday: day(),
+    wednesday: day(),
+    thursday: day(),
+    friday: day(),
+    saturday: day(),
+    sunday: day(),
+  };
+};
+
 async function createUser(req, res, next) {
   try {
     const {
@@ -203,28 +221,74 @@ async function createUser(req, res, next) {
       dateOfBirth, gender, bloodType, phone, emergencyContact, address,
     } = req.body;
 
+    if (role === USER_ROLES.ADMIN) {
+      return errorResponse(res, ERROR_MESSAGES.ADMIN_USER_ROLE_FORBIDDEN, HTTP_STATUS_CODES.BAD_REQUEST);
+    }
+    if (role !== USER_ROLES.PATIENT && role !== USER_ROLES.DOCTOR) {
+      return errorResponse(res, ERROR_MESSAGES.CREATE_USER_ROLE_INVALID, HTTP_STATUS_CODES.BAD_REQUEST);
+    }
+
+    if (role === USER_ROLES.DOCTOR) {
+      if (!specialty || typeof specialty !== "string" || !specialty.trim()) {
+        return errorResponse(res, "Doctor specialty is required", HTTP_STATUS_CODES.BAD_REQUEST);
+      }
+      const ex = Number(experience);
+      const fe = Number(fees);
+      if (!Number.isFinite(ex) || ex < 0 || !Number.isFinite(fe) || fe < 0) {
+        return errorResponse(res, "Doctor experience and fees must be valid non-negative numbers", HTTP_STATUS_CODES.BAD_REQUEST);
+      }
+    }
+
+    if (role === USER_ROLES.PATIENT) {
+      if (!dateOfBirth || !gender || !bloodType || !phone) {
+        return errorResponse(res, "Patient dateOfBirth, gender, bloodType, and phone are required", HTTP_STATUS_CODES.BAD_REQUEST);
+      }
+      if (!emergencyContact?.name || !emergencyContact?.phone) {
+        return errorResponse(res, "Patient emergency contact name and phone are required", HTTP_STATUS_CODES.BAD_REQUEST);
+      }
+    }
+
     const exists = await User.findOne({ email });
     if (exists) {
       return errorResponse(res, ERROR_MESSAGES.EMAIL_EXISTS, HTTP_STATUS_CODES.CONFLICT);
     }
 
-    const user = await User.create({ email, password, name, role });
+    const user = await User.create({
+      email,
+      password,
+      name,
+      role,
+      emailVerified: true,
+      registrationApproved: true,
+      registrationRejectedAt: null,
+      emailVerificationToken: null,
+      emailVerificationExpires: null,
+    });
 
     try {
       if (role === USER_ROLES.DOCTOR) {
-        await Doctor.create({ userId: user._id, specialty, experience, fees });
+        await Doctor.create({
+          userId: user._id,
+          specialty: String(specialty).trim(),
+          experience: Number(experience),
+          fees: Number(fees),
+          workingHours: defaultDoctorWorkingHours(),
+          availableSlots: [],
+        });
       } else if (role === USER_ROLES.PATIENT) {
         await Patient.create({
           userId: user._id,
-          dateOfBirth,
+          dateOfBirth: new Date(dateOfBirth),
           gender,
           bloodType,
-          phone,
-          address,
+          phone: String(phone).trim(),
+          address: address && typeof address === "object" ? address : {},
           emergencyContact: {
-            name: emergencyContact?.name,
-            phone: emergencyContact?.phone,
-            relationship: emergencyContact?.relationship,
+            name: String(emergencyContact.name).trim(),
+            phone: String(emergencyContact.phone).trim(),
+            relationship: emergencyContact.relationship
+              ? String(emergencyContact.relationship).trim()
+              : "Family",
           },
         });
       }
@@ -233,7 +297,7 @@ async function createUser(req, res, next) {
       throw innerErr;
     }
 
-    sendWelcomeEmail(user);
+    void sendWelcomeEmail(user);
 
     await auditLogger({
       userId: req.user.userId,
@@ -257,6 +321,10 @@ async function updateUser(req, res, next) {
     const user = await User.findById(req.params.id);
     if (!user) {
       return errorResponse(res, ERROR_MESSAGES.NOT_FOUND, HTTP_STATUS_CODES.NOT_FOUND);
+    }
+
+    if (user.role === USER_ROLES.ADMIN && req.body.isActive === false) {
+      return errorResponse(res, ERROR_MESSAGES.ADMIN_ACCOUNT_PROTECTED, HTTP_STATUS_CODES.FORBIDDEN);
     }
 
     const allowed = ["name", "avatar", "isActive"];
@@ -296,6 +364,13 @@ async function deleteUser(req, res, next) {
     const user = await User.findById(req.params.id);
     if (!user) {
       return errorResponse(res, ERROR_MESSAGES.NOT_FOUND, HTTP_STATUS_CODES.NOT_FOUND);
+    }
+
+    if (user.role === USER_ROLES.ADMIN) {
+      return errorResponse(res, ERROR_MESSAGES.ADMIN_ACCOUNT_PROTECTED, HTTP_STATUS_CODES.FORBIDDEN);
+    }
+    if (String(user._id) === String(req.user.userId)) {
+      return errorResponse(res, ERROR_MESSAGES.CANNOT_DELETE_SELF, HTTP_STATUS_CODES.BAD_REQUEST);
     }
 
     const hardDelete = req.query.hard === "true";
@@ -369,14 +444,19 @@ async function activateUser(req, res, next) {
 
 async function deactivateUser(req, res, next) {
   try {
+    const target = await User.findById(req.params.id);
+    if (!target) {
+      return errorResponse(res, ERROR_MESSAGES.NOT_FOUND, HTTP_STATUS_CODES.NOT_FOUND);
+    }
+    if (target.role === USER_ROLES.ADMIN) {
+      return errorResponse(res, ERROR_MESSAGES.ADMIN_ACCOUNT_PROTECTED, HTTP_STATUS_CODES.FORBIDDEN);
+    }
+
     const user = await User.findByIdAndUpdate(
       req.params.id,
       { $set: { isActive: false } },
       { new: true }
     );
-    if (!user) {
-      return errorResponse(res, ERROR_MESSAGES.NOT_FOUND, HTTP_STATUS_CODES.NOT_FOUND);
-    }
 
     await auditLogger({
       userId: req.user.userId,
@@ -407,7 +487,7 @@ async function resetUserPassword(req, res, next) {
     user.refreshToken = null;
     await user.save();
 
-    sendWelcomeEmail(user, tempPassword);
+    void sendWelcomeEmail(user, tempPassword);
 
     await auditLogger({
       userId: req.user.userId,
@@ -777,6 +857,117 @@ async function systemHealthCheck(req, res, next) {
   }
 }
 
+async function getPendingRegistrations(req, res, next) {
+  try {
+    const users = await User.find({
+      role: { $in: [USER_ROLES.PATIENT, USER_ROLES.DOCTOR] },
+      emailVerified: { $eq: true },
+      registrationApproved: { $eq: false },
+      registrationRejectedAt: null,
+    })
+      .sort({ createdAt: -1 })
+      .lean();
+
+    const out = [];
+    for (const u of users) {
+      let profile = null;
+      if (u.role === USER_ROLES.DOCTOR) {
+        profile = await Doctor.findOne({ userId: u._id }).lean();
+      } else if (u.role === USER_ROLES.PATIENT) {
+        profile = await Patient.findOne({ userId: u._id }).lean();
+      }
+      out.push({ user: u, profile });
+    }
+
+    return successResponse(res, { pending: out });
+  } catch (err) {
+    return next(err);
+  }
+}
+
+async function approveRegistration(req, res, next) {
+  try {
+    const user = await User.findById(req.params.id);
+    if (!user) {
+      return errorResponse(res, ERROR_MESSAGES.NOT_FOUND, HTTP_STATUS_CODES.NOT_FOUND);
+    }
+    if (user.role === USER_ROLES.ADMIN) {
+      return errorResponse(res, ERROR_MESSAGES.ADMIN_ACCOUNT_PROTECTED, HTTP_STATUS_CODES.FORBIDDEN);
+    }
+    if (!user.emailVerified) {
+      return errorResponse(res, "Email is not verified yet", HTTP_STATUS_CODES.BAD_REQUEST);
+    }
+    if (user.registrationApproved) {
+      return errorResponse(res, "Account is already approved", HTTP_STATUS_CODES.BAD_REQUEST);
+    }
+    if (user.registrationRejectedAt) {
+      return errorResponse(res, "This registration was rejected", HTTP_STATUS_CODES.BAD_REQUEST);
+    }
+
+    user.registrationApproved = true;
+    user.registrationRejectedAt = null;
+    user.isActive = true;
+    await user.save();
+
+    await sendRegistrationApprovedEmail({ name: user.name, email: user.email });
+
+    await auditLogger({
+      userId: req.user.userId,
+      action: AUDIT_ACTIONS.USER_UPDATED,
+      category: AUDIT_CATEGORIES.ADMIN,
+      description: `Admin approved registration: ${user.email}`,
+      resourceType: "user",
+      resourceId: user._id,
+      severity: "info",
+      ...clientMeta(req),
+    });
+
+    return successResponse(res, { user }, "Registration approved");
+  } catch (err) {
+    return next(err);
+  }
+}
+
+async function rejectRegistration(req, res, next) {
+  try {
+    const user = await User.findById(req.params.id);
+    if (!user) {
+      return errorResponse(res, ERROR_MESSAGES.NOT_FOUND, HTTP_STATUS_CODES.NOT_FOUND);
+    }
+    if (user.role === USER_ROLES.ADMIN) {
+      return errorResponse(res, ERROR_MESSAGES.ADMIN_ACCOUNT_PROTECTED, HTTP_STATUS_CODES.FORBIDDEN);
+    }
+    if (user.registrationApproved) {
+      return errorResponse(res, "Account is already approved", HTTP_STATUS_CODES.BAD_REQUEST);
+    }
+
+    const note =
+      req.body && typeof req.body.message === "string" ? String(req.body.message).trim().slice(0, 2000) : "";
+
+    user.registrationApproved = false;
+    user.registrationRejectedAt = new Date();
+    user.isActive = false;
+    await user.save();
+
+    await sendRegistrationRejectedEmail({ name: user.name, email: user.email }, note || null);
+
+    await auditLogger({
+      userId: req.user.userId,
+      action: AUDIT_ACTIONS.USER_UPDATED,
+      category: AUDIT_CATEGORIES.ADMIN,
+      description: `Admin rejected registration: ${user.email}${note ? ` — note: ${note.slice(0, 200)}` : ""}`,
+      resourceType: "user",
+      resourceId: user._id,
+      severity: "warning",
+      ...clientMeta(req),
+    });
+
+    return successResponse(res, { user }, "Registration rejected");
+  } catch (err) {
+    return next(err);
+  }
+}
+
 module.exports = {
   getDashboardStats,
   getAllUsers,
@@ -796,4 +987,7 @@ module.exports = {
   getPatientReports,
   createAnnouncement,
   systemHealthCheck,
+  getPendingRegistrations,
+  approveRegistration,
+  rejectRegistration,
 };

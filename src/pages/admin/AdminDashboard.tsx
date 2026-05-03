@@ -1,93 +1,123 @@
 import { useQuery } from "@tanstack/react-query";
 import { StatCard } from "@/components/shared/StatCard";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Users, Calendar, Activity } from "lucide-react";
+import { Users, Calendar, Activity, FileText, Pill, Info } from "lucide-react";
 import { request } from "@/lib/http";
-import {
-  appointmentPatientName,
-  appointmentDoctorName,
-  formatAppointmentDate,
-  type AppointmentApi,
-} from "@/lib/appointmentsDisplay";
+import { format } from "date-fns";
 
-type Paginated<T> = { pagination: { total: number }; patients?: T; doctors?: T; appointments?: T };
+type DashboardPayload = {
+  users: { total: number; active: number; byRole: Record<string, number> };
+  doctors: { total: number; active: number; inactive: number };
+  patients: { total: number };
+  appointments: {
+    total: number;
+    scheduled: number;
+    today: number;
+    thisWeek: number;
+    thisMonth: number;
+    byStatus: Record<string, number>;
+  };
+  medicalRecords: { total: number };
+  prescriptions: { active: number };
+  recentActivity: {
+    id: string;
+    action: string;
+    category: string;
+    description?: string;
+    user: { name?: string; email?: string } | null;
+    timestamp: string;
+    severity?: string;
+  }[];
+  revenue?: { placeholder?: boolean; note?: string };
+};
 
 export default function AdminDashboard() {
-  const { data: pMeta } = useQuery({
-    queryKey: ["admin-count-patients"],
-    queryFn: () => request<Paginated<unknown>>("/api/patients?limit=1&page=1"),
-  });
-  const { data: dMeta } = useQuery({
-    queryKey: ["admin-count-doctors"],
-    queryFn: () => request<Paginated<unknown>>("/api/doctors?limit=1&page=1"),
-  });
-  const { data: aMeta } = useQuery({
-    queryKey: ["admin-count-appts"],
-    queryFn: () => request<Paginated<unknown>>("/api/appointments?limit=1&page=1"),
-  });
-  const { data: activeMeta } = useQuery({
-    queryKey: ["admin-active-appts"],
-    queryFn: () =>
-      request<{ appointments: AppointmentApi[]; pagination: { total: number } }>(
-        "/api/appointments?status=scheduled&limit=1&page=1"
-      ),
+  const { data, isLoading, isError, error } = useQuery({
+    queryKey: ["admin-dashboard"],
+    queryFn: () => request<DashboardPayload>("/api/admin/dashboard"),
   });
 
-  const { data: recent } = useQuery({
-    queryKey: ["admin-recent-appts"],
-    queryFn: () =>
-      request<{ appointments: AppointmentApi[] }>("/api/appointments?limit=8&page=1"),
-  });
-
-  const totalPatients = pMeta?.pagination?.total ?? 0;
-  const totalDoctors = dMeta?.pagination?.total ?? 0;
-  const totalAppts = aMeta?.pagination?.total ?? 0;
-  const activeAppts = activeMeta?.pagination?.total ?? 0;
-  const recentRows = recent?.appointments ?? [];
+  const u = data?.users;
+  const ap = data?.appointments;
+  const recent = data?.recentActivity ?? [];
 
   return (
     <div className="space-y-6">
       <div>
         <h2 className="text-2xl font-bold text-foreground">Admin dashboard</h2>
-        <p className="text-muted-foreground">Live counts from the MediBook API</p>
+        <p className="text-muted-foreground">
+          {isLoading ? "Loading…" : isError ? (error instanceof Error ? error.message : "Failed to load") : "Aggregated data from the MediBook API"}
+        </p>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard title="Patients" value={totalPatients} icon={<Users className="h-5 w-5" />} />
-        <StatCard title="Doctors" value={totalDoctors} icon={<Activity className="h-5 w-5" />} />
-        <StatCard title="Appointments" value={totalAppts} icon={<Calendar className="h-5 w-5" />} />
-        <StatCard title="Scheduled" value={activeAppts} icon={<Calendar className="h-5 w-5" />} />
+        <StatCard title="Patients" value={data?.patients?.total ?? 0} icon={<Users className="h-5 w-5" />} />
+        <StatCard title="Doctors" value={data?.doctors?.total ?? 0} icon={<Activity className="h-5 w-5" />} />
+        <StatCard title="Appointments" value={ap?.total ?? 0} icon={<Calendar className="h-5 w-5" />} />
+        <StatCard title="Scheduled / confirmed" value={ap?.scheduled ?? 0} icon={<Calendar className="h-5 w-5" />} />
       </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <StatCard title="Users (total)" value={u?.total ?? 0} icon={<Users className="h-5 w-5" />} />
+        <StatCard title="Active users (30d)" value={u?.active ?? 0} icon={<Users className="h-5 w-5" />} />
+        <StatCard title="Medical records" value={data?.medicalRecords?.total ?? 0} icon={<FileText className="h-5 w-5" />} />
+        <StatCard title="Active prescriptions" value={data?.prescriptions?.active ?? 0} icon={<Pill className="h-5 w-5" />} />
+      </div>
+
+      {data?.revenue?.placeholder && (
+        <Card className="border-dashed">
+          <CardHeader className="flex flex-row items-center gap-2 pb-2">
+            <Info className="h-4 w-4 text-muted-foreground" />
+            <CardTitle className="text-base font-medium">Revenue</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm text-muted-foreground">{data.revenue.note ?? "Not connected to billing data yet."}</p>
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-lg">Recent appointments</CardTitle>
+          <CardTitle className="text-lg">Recent system activity</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b text-muted-foreground text-left">
-                  <th className="pb-2 font-medium">Patient</th>
-                  <th className="pb-2 font-medium">Doctor</th>
+                  <th className="pb-2 font-medium">User</th>
+                  <th className="pb-2 font-medium">Action</th>
+                  <th className="pb-2 font-medium">Description</th>
                   <th className="pb-2 font-medium">When</th>
-                  <th className="pb-2 font-medium">Status</th>
                 </tr>
               </thead>
               <tbody>
-                {recentRows.map((a) => (
-                  <tr key={a._id} className="border-b last:border-0">
-                    <td className="py-3 text-foreground">{appointmentPatientName(a)}</td>
-                    <td className="py-3 text-foreground">{appointmentDoctorName(a)}</td>
-                    <td className="py-3 text-muted-foreground">
-                      {formatAppointmentDate(a.appointmentDate)} {a.timeSlot}
+                {recent.map((row) => (
+                  <tr key={String(row.id)} className="border-b last:border-0">
+                    <td className="py-3 text-foreground">
+                      {row.user?.name ?? "—"}
+                      {row.user?.email ? (
+                        <span className="block text-xs text-muted-foreground">{row.user.email}</span>
+                      ) : null}
                     </td>
-                    <td className="py-3 text-xs capitalize">{a.status}</td>
+                    <td className="py-3 text-xs capitalize">{row.action}</td>
+                    <td className="py-3 text-muted-foreground max-w-xs truncate">{row.description ?? "—"}</td>
+                    <td className="py-3 text-muted-foreground text-xs whitespace-nowrap">
+                      {(() => {
+                        try {
+                          return format(new Date(row.timestamp), "yyyy-MM-dd HH:mm");
+                        } catch {
+                          return String(row.timestamp);
+                        }
+                      })()}
+                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
-            {recentRows.length === 0 && <p className="text-sm text-muted-foreground py-4">No data</p>}
+            {recent.length === 0 && !isLoading && (
+              <p className="text-sm text-muted-foreground py-4">No recent audit entries</p>
+            )}
           </div>
         </CardContent>
       </Card>

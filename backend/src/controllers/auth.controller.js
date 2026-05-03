@@ -12,7 +12,12 @@ const {
   AUDIT_CATEGORIES,
 } = require("../config/constants");
 const { verifyRefreshToken } = require("../utils/tokenGenerator");
-const { NODE_ENV } = require("../config/env");
+const { NODE_ENV, FRONTEND_URL } = require("../config/env");
+const {
+  sendEmailVerificationEmail,
+  sendPasswordResetEmail,
+  mailConfigured,
+} = require("../services/emailService");
 
 /**
  * Extracts meta information relating to the user's connection.
@@ -31,6 +36,27 @@ function hashResetToken(token) {
   return crypto.createHash("sha256").update(token).digest("hex");
 }
 
+function registrationStatus(user) {
+  if (user.role === USER_ROLES.ADMIN) return "active";
+  if (user.registrationRejectedAt) return "rejected";
+  if (user.emailVerified === false) return "pending_verification";
+  if (user.registrationApproved === false) return "pending_approval";
+  return "active";
+}
+
+function defaultDoctorWorkingHours() {
+  const day = () => ({ start: "09:00", end: "17:00" });
+  return {
+    monday: day(),
+    tuesday: day(),
+    wednesday: day(),
+    thursday: day(),
+    friday: day(),
+    saturday: day(),
+    sunday: day(),
+  };
+}
+
 async function buildUserPayload(userDoc) {
   const u = userDoc.toObject ? userDoc.toObject() : { ...userDoc };
   delete u.password;
@@ -47,6 +73,7 @@ async function buildUserPayload(userDoc) {
     lastLogin: u.lastLogin,
     createdAt: u.createdAt,
     updatedAt: u.updatedAt,
+    registrationStatus: registrationStatus(u),
   };
   let profile = null;
   if (u.role === USER_ROLES.DOCTOR) {
@@ -84,35 +111,56 @@ async function register(req, res, next) {
       emergencyContact,
       address,
     } = req.body;
+
+    if (role === USER_ROLES.ADMIN) {
+      return errorResponse(res, ERROR_MESSAGES.ADMIN_USER_ROLE_FORBIDDEN, HTTP_STATUS_CODES.BAD_REQUEST);
+    }
+
     const exists = await User.findOne({ email });
     if (exists) {
-      return errorResponse(
-        res,
-        ERROR_MESSAGES.EMAIL_EXISTS,
-        HTTP_STATUS_CODES.CONFLICT
-      );
+      return errorResponse(res, ERROR_MESSAGES.EMAIL_EXISTS, HTTP_STATUS_CODES.CONFLICT);
     }
-    const user = await User.create({ email, password, name, role });
+
+    const rawVerify = crypto.randomBytes(32).toString("hex");
+    const verifyHash = hashResetToken(rawVerify);
+    const verifyExpires = new Date(Date.now() + 48 * 60 * 60 * 1000);
+
+    const user = await User.create({
+      email,
+      password,
+      name,
+      role,
+      emailVerified: false,
+      registrationApproved: false,
+      registrationRejectedAt: null,
+      emailVerificationToken: verifyHash,
+      emailVerificationExpires: verifyExpires,
+    });
+
     try {
       if (role === USER_ROLES.DOCTOR) {
         await Doctor.create({
           userId: user._id,
-          specialty,
-          experience,
-          fees,
+          specialty: String(specialty).trim(),
+          experience: Number(experience),
+          fees: Number(fees),
+          workingHours: defaultDoctorWorkingHours(),
+          availableSlots: [],
         });
       } else if (role === USER_ROLES.PATIENT) {
         await Patient.create({
           userId: user._id,
-          dateOfBirth,
+          dateOfBirth: new Date(dateOfBirth),
           gender,
           bloodType,
-          phone,
-          address,
+          phone: String(phone).trim(),
+          address: address && typeof address === "object" ? address : {},
           emergencyContact: {
-            name: emergencyContact.name,
-            phone: emergencyContact.phone,
-            relationship: emergencyContact.relationship,
+            name: String(emergencyContact.name).trim(),
+            phone: String(emergencyContact.phone).trim(),
+            relationship: emergencyContact.relationship
+              ? String(emergencyContact.relationship).trim()
+              : "Family",
           },
         });
       }
@@ -120,30 +168,99 @@ async function register(req, res, next) {
       await User.deleteOne({ _id: user._id });
       throw innerErr;
     }
-    const accessToken = user.generateAuthToken();
-    const refreshToken = user.generateRefreshToken();
-    await User.findByIdAndUpdate(user._id, { refreshToken });
+
+    const verifyUrl = `${FRONTEND_URL}/verify-email?token=${encodeURIComponent(rawVerify)}`;
+    await sendEmailVerificationEmail({ name: user.name, email: user.email }, verifyUrl);
+
     await auditLogger({
       userId: user._id,
       action: AUDIT_ACTIONS.USER_CREATED,
-      category: AUDIT_CATEGORIES.DATA,
-      description: "User registered",
+      category: AUDIT_CATEGORIES.AUTH,
+      description: "Self-registration (pending email verification)",
       resourceType: "user",
       resourceId: user._id,
       severity: "info",
       ...clientMeta(req),
     });
-    const payload = await buildUserPayload(user);
+
+    const extra =
+      NODE_ENV !== "production" && !mailConfigured()
+        ? { verificationUrlForDevelopment: verifyUrl }
+        : null;
+
     return successResponse(
       res,
       {
-        ...payload,
-        accessToken,
-        refreshToken,
+        message:
+          "Account created. Check your email to verify your address, then wait for an administrator to approve your account.",
+        ...extra,
       },
       "Registration successful",
       HTTP_STATUS_CODES.CREATED
     );
+  } catch (err) {
+    return next(err);
+  }
+}
+
+async function verifyEmail(req, res, next) {
+  try {
+    const { token } = req.body;
+    const hashed = hashResetToken(token);
+    const user = await User.findOne({
+      emailVerificationToken: hashed,
+      emailVerificationExpires: { $gt: new Date() },
+    }).select("+emailVerificationToken +emailVerificationExpires");
+
+    if (!user) {
+      return errorResponse(res, ERROR_MESSAGES.INVALID_VERIFICATION_TOKEN, HTTP_STATUS_CODES.BAD_REQUEST);
+    }
+
+    user.emailVerified = true;
+    user.emailVerificationToken = null;
+    user.emailVerificationExpires = null;
+    await user.save();
+
+    await auditLogger({
+      userId: user._id,
+      action: AUDIT_ACTIONS.PROFILE_UPDATED,
+      category: AUDIT_CATEGORIES.AUTH,
+      description: "Email address verified",
+      resourceType: "user",
+      resourceId: user._id,
+      severity: "info",
+      ...clientMeta(req),
+    });
+
+    return successResponse(res, null, "Email verified. You can sign in once an administrator approves your account.");
+  } catch (err) {
+    return next(err);
+  }
+}
+
+async function resendVerification(req, res, next) {
+  try {
+    const { email } = req.body;
+    const user = await User.findOne({ email }).select("+emailVerificationToken +emailVerificationExpires");
+    const privacyMsg =
+      "If an account exists and still needs verification, a new email has been sent.";
+
+    if (!user || user.role === USER_ROLES.ADMIN) {
+      return successResponse(res, null, privacyMsg);
+    }
+    if (user.registrationRejectedAt || user.emailVerified !== false) {
+      return successResponse(res, null, privacyMsg);
+    }
+
+    const rawVerify = crypto.randomBytes(32).toString("hex");
+    user.emailVerificationToken = hashResetToken(rawVerify);
+    user.emailVerificationExpires = new Date(Date.now() + 48 * 60 * 60 * 1000);
+    await user.save();
+
+    const verifyUrl = `${FRONTEND_URL}/verify-email?token=${encodeURIComponent(rawVerify)}`;
+    await sendEmailVerificationEmail({ name: user.name, email: user.email }, verifyUrl);
+
+    return successResponse(res, { emailed: true }, privacyMsg);
   } catch (err) {
     return next(err);
   }
@@ -166,6 +283,29 @@ async function login(req, res, next) {
         ERROR_MESSAGES.USER_INACTIVE,
         HTTP_STATUS_CODES.FORBIDDEN
       );
+    }
+    if (user.role !== USER_ROLES.ADMIN) {
+      if (user.registrationRejectedAt) {
+        return errorResponse(
+          res,
+          ERROR_MESSAGES.REGISTRATION_REJECTED,
+          HTTP_STATUS_CODES.FORBIDDEN
+        );
+      }
+      if (user.emailVerified === false) {
+        return errorResponse(
+          res,
+          ERROR_MESSAGES.EMAIL_NOT_VERIFIED,
+          HTTP_STATUS_CODES.FORBIDDEN
+        );
+      }
+      if (user.registrationApproved === false) {
+        return errorResponse(
+          res,
+          ERROR_MESSAGES.REGISTRATION_PENDING_APPROVAL,
+          HTTP_STATUS_CODES.FORBIDDEN
+        );
+      }
     }
     const ok = await user.comparePassword(password);
     if (!ok) {
@@ -251,6 +391,29 @@ async function refreshToken(req, res, next) {
         HTTP_STATUS_CODES.FORBIDDEN
       );
     }
+    if (user.role !== USER_ROLES.ADMIN) {
+      if (user.registrationRejectedAt) {
+        return errorResponse(
+          res,
+          ERROR_MESSAGES.REGISTRATION_REJECTED,
+          HTTP_STATUS_CODES.FORBIDDEN
+        );
+      }
+      if (user.emailVerified === false) {
+        return errorResponse(
+          res,
+          ERROR_MESSAGES.EMAIL_NOT_VERIFIED,
+          HTTP_STATUS_CODES.FORBIDDEN
+        );
+      }
+      if (user.registrationApproved === false) {
+        return errorResponse(
+          res,
+          ERROR_MESSAGES.REGISTRATION_PENDING_APPROVAL,
+          HTTP_STATUS_CODES.FORBIDDEN
+        );
+      }
+    }
     const accessToken = user.generateAuthToken();
     return successResponse(res, { accessToken }, "Token refreshed");
   } catch (err) {
@@ -272,6 +435,8 @@ async function forgotPassword(req, res, next) {
     user.passwordResetToken = hashed;
     user.passwordResetExpires = new Date(Date.now() + 60 * 60 * 1000);
     await user.save();
+    const resetLink = `${FRONTEND_URL}/login?resetToken=${encodeURIComponent(resetToken)}`;
+    await sendPasswordResetEmail({ name: user.name, email: user.email }, resetLink);
     const data =
       NODE_ENV !== "production"
         ? { resetTokenForDevelopment: resetToken }
@@ -335,6 +500,8 @@ async function getCurrentUser(req, res, next) {
 
 module.exports = {
   register,
+  verifyEmail,
+  resendVerification,
   login,
   logout,
   refreshToken,

@@ -15,6 +15,7 @@ function ageFromDob(d) {
   return age;
 }
 
+/** Self-service sign-up: patient or doctor only (not admin). */
 const registerValidator = [
   body("email").isEmail().normalizeEmail(),
   body("password")
@@ -24,11 +25,7 @@ const registerValidator = [
       "Password must be at least 8 characters and include uppercase, lowercase, and a number"
     ),
   body("name").trim().notEmpty(),
-  body("role").isIn([
-    USER_ROLES.PATIENT,
-    USER_ROLES.DOCTOR,
-    USER_ROLES.ADMIN,
-  ]),
+  body("role").isIn([USER_ROLES.PATIENT, USER_ROLES.DOCTOR]),
   body("specialty")
     .if(body("role").equals(USER_ROLES.DOCTOR))
     .trim()
@@ -77,6 +74,10 @@ const registerValidator = [
     }),
 ];
 
+const verifyEmailValidator = [body("token").trim().notEmpty()];
+
+const resendVerificationValidator = [body("email").isEmail().normalizeEmail()];
+
 const loginValidator = [
   body("email").isEmail().normalizeEmail(),
   body("password").notEmpty(),
@@ -122,6 +123,8 @@ const updateProfileValidator = [
 
 module.exports = {
   registerValidator,
+  verifyEmailValidator,
+  resendVerificationValidator,
   loginValidator,
   forgotPasswordValidator,
   resetPasswordValidator,

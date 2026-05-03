@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   LayoutDashboard, Calendar, FileText, Search, Stethoscope, ClipboardList, Pill,
-  Users, Shield, LogOut, Menu, Heart,
+  Users, Shield, LogOut, Menu, Heart, Bell, UserCheck,
 } from "lucide-react";
 
 const roleNavItems: Record<UserRole, { title: string; url: string; icon: React.ElementType }[]> = {
@@ -20,18 +20,22 @@ const roleNavItems: Record<UserRole, { title: string; url: string; icon: React.E
     { title: "Find Doctors", url: "/patient/doctors", icon: Search },
     { title: "Appointments", url: "/patient/appointments", icon: Calendar },
     { title: "Medical Records", url: "/patient/records", icon: FileText },
+    { title: "Notifications", url: "/patient/notifications", icon: Bell },
   ],
   doctor: [
     { title: "Dashboard", url: "/doctor", icon: LayoutDashboard },
     { title: "Consultations", url: "/doctor/consultations", icon: Stethoscope },
     { title: "Clinical Notes", url: "/doctor/notes", icon: ClipboardList },
     { title: "Prescriptions", url: "/doctor/prescriptions", icon: Pill },
+    { title: "Notifications", url: "/doctor/notifications", icon: Bell },
   ],
   admin: [
     { title: "Dashboard", url: "/admin", icon: LayoutDashboard },
     { title: "Users", url: "/admin/users", icon: Users },
+    { title: "Pending sign-ups", url: "/admin/pending-registrations", icon: UserCheck },
     { title: "Appointments", url: "/admin/appointments", icon: Calendar },
     { title: "Audit Logs", url: "/admin/audit", icon: Shield },
+    { title: "Notifications", url: "/admin/notifications", icon: Bell },
   ],
 };
 

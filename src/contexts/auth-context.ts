@@ -6,7 +6,6 @@ export interface AuthContextType {
   isAuthenticated: boolean;
   bootstrapping: boolean;
   login: (email: string, password: string) => Promise<SessionUser>;
-  register: (body: Record<string, unknown>) => Promise<SessionUser>;
   logout: () => Promise<void>;
 }
 

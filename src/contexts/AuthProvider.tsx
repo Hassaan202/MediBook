@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useEffect } from "react";
 import { request, setTokens, clearTokens, getAccessToken } from "@/lib/http";
-import type { SessionUser, UserRole } from "@/types/auth";
+import type { RegistrationStatus, SessionUser, UserRole } from "@/types/auth";
 import { AuthContext } from "@/contexts/auth-context";
 
 type ApiUser = {
@@ -9,6 +9,7 @@ type ApiUser = {
   email: string;
   role: string;
   avatar?: string | null;
+  registrationStatus?: RegistrationStatus;
 };
 
 type ApiProfile = { _id: string } | null;
@@ -29,6 +30,7 @@ function mapPayloadToSession(data: Omit<AuthPayload, "accessToken" | "refreshTok
     email: user.email,
     role,
     avatar: user.avatar,
+    registrationStatus: user.registrationStatus,
   };
   if (profile && role === "patient") {
     base.patientProfileId = String(profile._id);
@@ -78,18 +80,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [applyPayload]
   );
 
-  const register = useCallback(
-    async (body: Record<string, unknown>) => {
-      const data = await request<AuthPayload>("/api/auth/register", {
-        method: "POST",
-        json: body,
-      });
-      applyPayload(data);
-      return mapPayloadToSession(data);
-    },
-    [applyPayload]
-  );
-
   const logout = useCallback(async () => {
     try {
       if (getAccessToken()) {
@@ -110,7 +100,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         isAuthenticated: Boolean(user),
         bootstrapping,
         login,
-        register,
         logout,
       }}
     >

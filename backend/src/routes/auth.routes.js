@@ -5,6 +5,8 @@ const { verifyToken } = require("../middleware/auth");
 const { validateRequest } = require("../middleware/validation");
 const {
   registerValidator,
+  verifyEmailValidator,
+  resendVerificationValidator,
   loginValidator,
   forgotPasswordValidator,
   resetPasswordValidator,
@@ -40,6 +42,22 @@ router.post(
   ...registerValidator,
   validateRequest,
   authController.register
+);
+
+router.post(
+  "/verify-email",
+  registerLimiter,
+  ...verifyEmailValidator,
+  validateRequest,
+  authController.verifyEmail
+);
+
+router.post(
+  "/resend-verification",
+  registerLimiter,
+  ...resendVerificationValidator,
+  validateRequest,
+  authController.resendVerification
 );
 
 router.post(

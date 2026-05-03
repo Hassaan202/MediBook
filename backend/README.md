@@ -63,7 +63,7 @@ Protected routes expect header: `Authorization: Bearer <accessToken>` unless not
 
 | Method | Path | Description |
 |--------|------|-------------|
-| POST | `/api/auth/register` | Register (creates `User` and `Doctor` or `Patient` when applicable) |
+| POST | `/api/auth/register` | Disabled (403): use `POST /api/admin/users` as admin to create patients/doctors |
 | POST | `/api/auth/login` | Login |
 | POST | `/api/auth/logout` | Logout (requires `Authorization: Bearer <accessToken>`) |
 | POST | `/api/auth/refresh-token` | New access token using refresh token body |
