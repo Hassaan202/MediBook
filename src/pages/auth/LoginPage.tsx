@@ -63,7 +63,7 @@ export default function LoginPage() {
             <Heart className="h-8 w-8 text-primary" />
             <h1 className="text-2xl font-bold text-foreground">MediBook</h1>
           </div>
-          <p className="text-muted-foreground">Healthcare appointments and records</p>
+          <p className="text-muted-foreground">Manage your healthcare appointments and records securely</p>
         </div>
 
         <Card className="shadow-elevated">
