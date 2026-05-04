@@ -1,5 +1,6 @@
 const express = require("express");
 const rateLimit = require("express-rate-limit");
+const { RATE_LIMITING_ENABLED } = require("../config/env");
 const authController = require("../controllers/auth.controller");
 const { verifyToken } = require("../middleware/auth");
 const { validateRequest } = require("../middleware/validation");
@@ -20,6 +21,7 @@ const registerLimiter = rateLimit({
   max: 30,
   standardHeaders: true,
   legacyHeaders: false,
+  skip: () => !RATE_LIMITING_ENABLED,
 });
 
 const loginLimiter = rateLimit({
@@ -27,6 +29,7 @@ const loginLimiter = rateLimit({
   max: 50,
   standardHeaders: true,
   legacyHeaders: false,
+  skip: () => !RATE_LIMITING_ENABLED,
 });
 
 const passwordFlowLimiter = rateLimit({
@@ -34,6 +37,7 @@ const passwordFlowLimiter = rateLimit({
   max: 20,
   standardHeaders: true,
   legacyHeaders: false,
+  skip: () => !RATE_LIMITING_ENABLED,
 });
 
 router.post(

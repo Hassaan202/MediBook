@@ -20,6 +20,10 @@ const JWT_REFRESH_SECRET = requireEnv("JWT_REFRESH_SECRET");
 const JWT_EXPIRE = process.env.JWT_EXPIRE || "15m";
 const JWT_REFRESH_EXPIRE = process.env.JWT_REFRESH_EXPIRE || "7d";
 const NODE_ENV = process.env.NODE_ENV || "development";
+/** Off in non-production so local dev is not blocked by express-rate-limit; on in production unless opted out. */
+const RATE_LIMITING_ENABLED =
+  NODE_ENV === "production" &&
+  String(process.env.API_RATE_LIMIT_DISABLED || "").toLowerCase() !== "true";
 const CORS_ORIGIN = process.env.CORS_ORIGIN || "http://localhost:5173";
 const FRONTEND_URL = (process.env.FRONTEND_URL || "http://localhost:5173").replace(/\/$/, "");
 
@@ -38,6 +42,7 @@ module.exports = {
   JWT_EXPIRE,
   JWT_REFRESH_EXPIRE,
   NODE_ENV,
+  RATE_LIMITING_ENABLED,
   CORS_ORIGIN,
   FRONTEND_URL,
   MAIL_HOST,

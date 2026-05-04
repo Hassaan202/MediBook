@@ -4,7 +4,7 @@ const cors = require("cors");
 const helmet = require("helmet");
 const compression = require("compression");
 const rateLimit = require("express-rate-limit");
-const { CORS_ORIGIN } = require("./config/env");
+const { CORS_ORIGIN, RATE_LIMITING_ENABLED } = require("./config/env");
 const { requestLogger } = require("./middleware/logger");
 const { sanitizeInput } = require("./middleware/validation");
 const authRoutes = require("./routes/auth.routes");
@@ -38,6 +38,7 @@ const apiLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: { success: false, message: "Too many requests from this IP, please try again later." },
+  skip: () => !RATE_LIMITING_ENABLED,
 });
 
 // Login/register limits are applied on specific routes in `auth.routes.js` (avoid double-limiting).
